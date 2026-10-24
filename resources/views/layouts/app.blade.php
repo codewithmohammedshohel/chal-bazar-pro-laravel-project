@@ -15,6 +15,7 @@
                 <nav class="flex gap-4">
                     @auth
                         <span>{{ auth()->user()->name }}</span>
+                        <a href="{{ route('dashboard') }}">Dashboard</a>
                         <a href="{{ route('logout') }}">Logout</a>
                     @else
                         <a href="{{ route('login') }}">Login</a>
@@ -24,7 +25,8 @@
             </div>
         </header>
         <main class="flex-1 max-w-7xl mx-auto w-full px-4 py-8">
-            {{ $slot }}
+            {{ $slot ?? '' }}
+            @yield('content')
         </main>
     </div>
     @livewireScripts

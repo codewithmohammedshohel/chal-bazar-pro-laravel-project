@@ -1,58 +1,85 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Chal Bazar Pro (Laravel)
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel 13 + Livewire 4 migration of the Chal Bazar rice & grocery shop.
+The legacy React/Firebase application lives in a separate repository and is
+not modified by this project.
 
-## About Laravel
+## Stack
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- PHP 8.3+ (verified locally on PHP 8.4)
+- Laravel 13
+- Livewire 4 with custom Blade authentication
+- Tailwind CSS 4 + Vite
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
-
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
-
-## Learning Laravel
-
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
-
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
-
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
-
-## Agentic Development
-
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+## Local setup
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+composer install
+npm install
+cp .env.example .env
+php artisan key:generate
+php artisan migrate
+npm run build
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+Configure the database and mail transport in `.env`. Never commit `.env`.
 
-## Contributing
+## Authentication and RBAC
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Roles: `superadmin`, `admin`, `staff`, `customer`.
+Account statuses: `active`, `suspended`, `blocked`.
 
-## Code of Conduct
+- Registration always creates an `active` `customer`; role/status are never
+  taken from submitted values.
+- Suspended/blocked accounts cannot log in or keep an authenticated session.
+- Permission keys and role defaults are preserved from the legacy app in
+  `app/Support/Permissions.php`.
+- Per-user overrides live in `user_permission_overrides` (`granted` = true/false).
+  An explicit override always wins over the role default.
+- An active `superadmin` bypasses permission checks for known catalogue keys.
+- Gates are registered in `AppServiceProvider`; routes/actions can use
+  `Gate::allows()`, `can` middleware or the `permission:` middleware alias.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Provisioning the first owner (CLI only)
 
-## Security Vulnerabilities
+There is no default owner account, no default password, and no web route that
+promotes users. Run the interactive command on the target environment:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+```bash
+php artisan app:provision-owner owner@example.com --name="Store Owner"
+```
 
-## License
+The command:
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- validates the email address;
+- requires a password of at least 12 characters with upper/lowercase letters,
+  a number and a symbol, entered twice without echo;
+- refuses to overwrite an existing account unless `--force` is supplied;
+- refuses to run in the `production` environment unless `--allow-production`
+  is explicitly passed and confirmed;
+- never prints the password.
+
+After the owner signs in, further role/permission changes must be performed by
+authorised administration code (not implemented in this milestone).
+
+## Testing
+
+```bash
+php artisan test
+```
+
+Tests use an isolated in-memory SQLite database and fake mail/notifications.
+No real email is sent and no production database is touched.
+
+## Repository hygiene
+
+The following are intentionally excluded from Git: `.env`, SQLite databases,
+`vendor/`, `node_modules/`, `public/build/`, generated Livewire assets,
+logs and caches.
+
+## Known limitations (this milestone)
+
+- SMTP is not configured, so password-reset emails are only verified with fakes.
+- Email verification is not enabled in the current design.
+- OAuth/phone OTP from the Firebase app is not implemented.
+- Catalog, cart, checkout and inventory belong to later milestones.

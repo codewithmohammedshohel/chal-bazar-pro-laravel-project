@@ -9,10 +9,12 @@ class Logout extends Component
 {
     public function mount()
     {
-        Auth::logout();
+        Auth::guard('web')->logout();
+
         session()->invalidate();
         session()->regenerateToken();
-        return redirect()->route('login');
+
+        return $this->redirectRoute('login', navigate: false);
     }
 
     public function render()

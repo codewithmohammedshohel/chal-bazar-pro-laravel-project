@@ -3,6 +3,9 @@
 namespace App\Livewire\Auth;
 
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Livewire\Component;
 
 class ForgotPassword extends Component
@@ -15,14 +18,24 @@ class ForgotPassword extends Component
             'email' => ['required', 'email'],
         ]);
 
-        $status = Password::sendResetLink(['email' => $this->email]);
+        $email = Str::lower($this->email);
+        $throttleKey = 'password-email:'.Str::transliterate($email).'|'.request()->ip();
 
-        if ($status === Password::RESET_LINK_SENT) {
-            session()->flash('status', __($status));
-            return;
+        if (RateLimiter::tooManyAttempts($throttleKey, 3)) {
+            throw ValidationException::withMessages([
+                'email' => __('auth.reset_throttle'),
+            ]);
         }
 
-        $this->addError('email', __($status));
+        RateLimiter::hit($throttleKey, 60);
+
+        // The response is intentionally generic so it never reveals whether an
+        // account exists for the submitted address.
+        Password::sendResetLink(['email' => $email]);
+
+        session()->flash('status', __('passwords.sent'));
+
+        $this->reset('email');
     }
 
     public function render()
