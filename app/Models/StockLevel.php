@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\Kilograms;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -28,12 +29,27 @@ class StockLevel extends Model
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
+    public function onHandUnits(): int
+    {
+        return Kilograms::toUnits($this->on_hand_kg);
+    }
+
+    public function reservedUnits(): int
+    {
+        return Kilograms::toUnits($this->reserved_kg);
+    }
+
+    public function availableUnits(): int
+    {
+        return $this->onHandUnits() - $this->reservedUnits();
+    }
+
     /**
-     * Available stock is always derived, never trusted from the column alone.
+     * Available stock is always derived from the two authoritative buckets.
      */
     public function available(): float
     {
-        return round((float) $this->on_hand_kg - (float) $this->reserved_kg, 4);
+        return Kilograms::toFloat($this->availableUnits());
     }
 
     public function getAvailableAttribute(): float
@@ -46,6 +62,14 @@ class StockLevel extends Model
      */
     public function syncAvailable(): void
     {
-        $this->available_kg = $this->available();
+        $available = $this->availableUnits();
+
+        if ($available < 0) {
+            throw new \DomainException(
+                "Stock level {$this->id} would have negative available stock ({$available} units).",
+            );
+        }
+
+        $this->available_kg = Kilograms::fromUnits($available);
     }
 }

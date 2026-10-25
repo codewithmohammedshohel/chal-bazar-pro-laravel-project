@@ -5,16 +5,22 @@ namespace App\Services;
 use App\Models\Invoice;
 use App\Models\InvoiceSequence;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderReturnBatch;
 use App\Models\OrderStatusEvent;
 use App\Models\ProductVariant;
 use App\Models\StockLevel;
 use App\Models\StockMovement;
 use App\Models\StockReservation;
 use App\Models\User;
+use App\Support\Kilograms;
+use Carbon\CarbonInterface;
+use DomainException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
+use InvalidArgumentException;
 
 /**
  * Transactional order placement and lifecycle.
@@ -23,10 +29,11 @@ use Illuminate\Validation\ValidationException;
  *  - reserve: reserved_kg += kg, physical unchanged
  *  - dispatch: on_hand_kg -= kg AND reserved_kg -= kg (physical leaves the shop)
  *  - release: reserved_kg -= kg, physical unchanged
- *  - return:  on_hand_kg += kg (only after a verified physical return)
+ *  - return:  on_hand_kg += kg (only after a verified, approved physical return)
  *
  * Delivery confirmation never touches stock again, so the same goods can
- * never be deducted twice.
+ * never be deducted twice. All kilogram arithmetic uses integer 1/10,000 kg
+ * units so limits cannot drift at decimal boundaries.
  */
 class OrderService
 {
@@ -158,7 +165,14 @@ class OrderService
                 ]);
             }
 
-            $this->releaseReservations($locked, $actor, 'গ্রাহক অর্ডার বাতিল করেছেন।');
+            $note = 'গ্রাহক অর্ডার বাতিল করেছেন।';
+
+            $this->releaseReservations(
+                $locked,
+                $actor,
+                $note,
+                StockReservation::RELEASE_CUSTOMER,
+            );
 
             $previous = $locked->status;
 
@@ -173,7 +187,7 @@ class OrderService
                 $previous,
                 Order::STATUS_CANCELLED,
                 $actor,
-                'গ্রাহক অর্ডার বাতিল করেছেন।',
+                $note,
             );
 
             return $locked->fresh(['items', 'statusEvents', 'invoice']);
@@ -196,7 +210,12 @@ class OrderService
             // If goods already left the shop, do not silently restock them.
             // A verified physical return must be recorded separately.
             if (! $locked->isDispatched()) {
-                $this->releaseReservations($locked, $actor, $note ?: 'দোকান অর্ডার বাতিল করেছে।');
+                $this->releaseReservations(
+                    $locked,
+                    $actor,
+                    $note ?: 'দোকান অর্ডার বাতিল করেছে।',
+                    StockReservation::RELEASE_SHOP,
+                );
             }
 
             $locked->update([
@@ -225,6 +244,12 @@ class OrderService
             $previous = $locked->status;
 
             switch ($toStatus) {
+                case Order::STATUS_ACCEPTED:
+                    // Once accepted, the pending reservation is no longer
+                    // eligible for automatic expiry.
+                    $this->clearReservationExpiry($locked);
+                    break;
+
                 case Order::STATUS_IN_TRANSIT:
                     $this->dispatchReservations($locked, $actor);
                     $locked->dispatched_at = now();
@@ -245,69 +270,346 @@ class OrderService
     }
 
     /**
-     * Record an approved physical return. Restocks saleable goods exactly once
-     * per operation key.
+     * Record one approved physical return submission.
      *
-     * @param  array<int, float>  $kilogramsByVariant
+     * Every line points at a real order item. The cumulative returned weight
+     * is compared against the item's historical dispatched weight
+     * (ordered quantity × weight snapshot). The order row and all affected
+     * order-item rows are locked, so different operation keys cannot race
+     * past the limit, while the batch operation key makes retries idempotent.
+     *
+     * @param  array<int, array{order_item_id:int|string, quantity_kg:int|float|string}>  $lines
      */
-    public function recordReturn(Order $order, User $actor, array $kilogramsByVariant, string $operationKey): void
-    {
-        DB::transaction(function () use ($order, $actor, $kilogramsByVariant, $operationKey): void {
-            // Serialise returns for the same order so a duplicate submission
-            // cannot restock before the idempotency key is visible.
+    public function recordReturn(
+        Order $order,
+        User $actor,
+        array $lines,
+        string $operationKey,
+        ?string $reason = null,
+    ): OrderReturnBatch {
+        $operationKey = trim($operationKey);
+
+        if ($operationKey === '' || mb_strlen($operationKey) > 80) {
+            throw ValidationException::withMessages([
+                'operation_key' => 'ফেরতের রেফারেন্স ১ থেকে ৮০ অক্ষরের হতে হবে।',
+            ]);
+        }
+
+        if ($lines === []) {
+            throw ValidationException::withMessages([
+                'returns' => 'অন্তত একটি পণ্যের ফেরত পরিমাণ দিন।',
+            ]);
+        }
+
+        $requestedUnits = $this->normalizeReturnLines($lines);
+
+        return DB::transaction(function () use (
+            $order,
+            $actor,
+            $requestedUnits,
+            $operationKey,
+            $reason,
+        ): OrderReturnBatch {
+            // Serialise every return for this order, including duplicate
+            // operation-key submissions.
             $lockedOrder = Order::query()->lockForUpdate()->findOrFail($order->id);
 
-            if (! in_array($lockedOrder->status, [Order::STATUS_IN_TRANSIT, Order::STATUS_DELIVERED], true)) {
+            $existing = OrderReturnBatch::query()
+                ->where('order_id', $lockedOrder->id)
+                ->where('operation_key', $operationKey)
+                ->first();
+
+            if ($existing !== null) {
+                return $existing->load('returns');
+            }
+
+            if (! in_array($lockedOrder->status, [Order::STATUS_IN_TRANSIT, Order::STATUS_DELIVERED], true)
+                || $lockedOrder->dispatched_at === null) {
                 throw ValidationException::withMessages([
-                    'order' => 'পণ্য পাঠানোর আগে ফেরত স্টকে যোগ করা যাবে না।',
+                    'order' => 'শুধুমাত্র ডিসপ্যাচ করা অর্ডারের যাচাইকৃত ফেরত গ্রহণ করা যাবে।',
                 ]);
             }
 
-            foreach ($kilogramsByVariant as $variantId => $kilograms) {
-                $variantId = (int) $variantId;
-                $kilograms = round((float) $kilograms, 4);
+            $itemIds = array_keys($requestedUnits);
+            sort($itemIds);
 
-                if ($kilograms <= 0) {
-                    continue;
-                }
+            // Lock order-item rows in a deterministic order. This is the
+            // serialisation point for cumulative return limits.
+            $items = $lockedOrder->items()
+                ->whereIn('id', $itemIds)
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get()
+                ->keyBy('id');
 
-                $belongsToOrder = $lockedOrder->items()
-                    ->where('product_variant_id', $variantId)
-                    ->exists();
-
-                if (! $belongsToOrder) {
+            foreach ($itemIds as $itemId) {
+                if (! $items->has($itemId)) {
                     throw ValidationException::withMessages([
-                        'product_variant_id' => 'এই ভ্যারিয়েন্টটি এই অর্ডারের অংশ নয়।',
+                        'returns' => 'ফেরতের জন্য নির্বাচিত আইটেম এই অর্ডারের অংশ নয়।',
+                    ]);
+                }
+            }
+
+            $validatedLines = [];
+            $restockByVariant = [];
+
+            foreach ($itemIds as $itemId) {
+                /** @var OrderItem $item */
+                $item = $items->get($itemId);
+                $requested = $requestedUnits[$itemId];
+                $maximum = $item->dispatchedWeightUnits();
+
+                // Locking-read the previous return rows avoids relying on a
+                // REPEATABLE READ snapshot that could predate a concurrent
+                // return committed while this transaction waited on the item
+                // row lock.
+                $previousReturns = $item->returns()
+                    ->orderBy('id')
+                    ->lockForUpdate()
+                    ->get();
+                $item->setRelation('returns', $previousReturns);
+
+                $alreadyReturned = $item->returnedWeightUnits();
+                $remaining = $maximum - $alreadyReturned;
+
+                if ($requested <= 0) {
+                    throw ValidationException::withMessages([
+                        'returns' => 'ফেরতের পরিমাণ শূন্যের বেশি হতে হবে।',
                     ]);
                 }
 
-                $movementKey = $operationKey.':variant:'.$variantId;
-
-                // Exactly-once restock: a retried return with the same
-                // operation key must not add the same goods twice.
-                if (StockMovement::query()->where('operation_key', $movementKey)->exists()) {
-                    continue;
+                if ($requested > $remaining) {
+                    throw ValidationException::withMessages([
+                        'returns' => sprintf(
+                            '%s — এই আইটেমের সর্বোচ্চ %s কেজি ফেরতযোগ্য; ইতিমধ্যে %s কেজি ফেরত হয়েছে, বাকি %s কেজি।',
+                            $item->product_title.' '.$item->variant_label,
+                            Kilograms::format($maximum),
+                            Kilograms::format($alreadyReturned),
+                            Kilograms::format(max(0, $remaining)),
+                        ),
+                    ]);
                 }
 
+                $variantId = (int) $item->product_variant_id;
+
+                if ($variantId <= 0) {
+                    throw ValidationException::withMessages([
+                        'returns' => 'এই আইটেমের ভ্যারিয়েন্ট আর স্টকে নেই, তাই ফেরত যোগ করা যাবে না।',
+                    ]);
+                }
+
+                $validatedLines[] = [
+                    'order_item_id' => (int) $item->id,
+                    'product_variant_id' => $variantId,
+                    'units' => $requested,
+                ];
+
+                $restockByVariant[$variantId] = ($restockByVariant[$variantId] ?? 0) + $requested;
+            }
+
+            $batch = OrderReturnBatch::create([
+                'reference' => $this->generateReturnReference(),
+                'order_id' => $lockedOrder->id,
+                'operation_key' => $operationKey,
+                'actor_user_id' => $actor->id,
+                'reason' => $reason,
+                'received_at' => now(),
+                'approved_at' => now(),
+            ]);
+
+            foreach ($validatedLines as $line) {
+                $batch->returns()->create([
+                    'order_id' => $lockedOrder->id,
+                    'order_item_id' => $line['order_item_id'],
+                    'product_variant_id' => $line['product_variant_id'],
+                    'quantity_kg' => Kilograms::fromUnits($line['units']),
+                ]);
+            }
+
+            // Lock stock rows in ascending variant order and apply the
+            // physical increase once per variant, even if two order lines
+            // happen to share the same variant.
+            ksort($restockByVariant);
+
+            foreach ($restockByVariant as $variantId => $units) {
                 $level = $this->lockStockLevel($variantId);
 
-                $level->on_hand_kg = round((float) $level->on_hand_kg + $kilograms, 4);
+                $level->on_hand_kg = Kilograms::fromUnits($level->onHandUnits() + $units);
                 $level->syncAvailable();
                 $level->save();
+            }
 
+            foreach ($validatedLines as $line) {
                 $this->recordMovement(
-                    variantId: $variantId,
+                    variantId: $line['product_variant_id'],
                     type: StockMovement::TYPE_RETURN,
                     bucket: StockMovement::BUCKET_PHYSICAL,
                     direction: StockMovement::DIRECTION_IN,
-                    kilograms: $kilograms,
-                    operationKey: $movementKey,
+                    kilograms: Kilograms::fromUnits($line['units']),
+                    operationKey: 'return:batch:'.$batch->id.':item:'.$line['order_item_id'],
                     order: $lockedOrder,
                     actor: $actor,
-                    note: 'যাচাইকৃত ফেরত পণ্য পুনরায় স্টকে যোগ হয়েছে।',
+                    note: 'যাচাইকৃত ও অনুমোদিত ফেরত পণ্য পুনরায় স্টকে যোগ হয়েছে।',
                 );
             }
-        });
+
+            return $batch->load('returns');
+        }, 3);
+    }
+
+    /**
+     * Release every reservation whose order is still pending past expires_at.
+     *
+     * @return array{candidates:int, expired:int, skipped:int}
+     */
+    public function expirePendingReservations(?int $limit = null, ?CarbonInterface $now = null): array
+    {
+        $now ??= now();
+        $limit = max(1, $limit ?? (int) config('orders.expiry_batch_size', 100));
+
+        $orderIds = StockReservation::query()
+            ->where('status', StockReservation::STATUS_PENDING)
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', $now)
+            ->whereHas('order', fn ($query) => $query->where('status', Order::STATUS_PENDING))
+            ->orderBy('id')
+            ->limit($limit)
+            ->pluck('order_id')
+            ->unique()
+            ->values();
+
+        $expired = 0;
+        $skipped = 0;
+
+        foreach ($orderIds as $orderId) {
+            if ($this->expireOrderReservations((int) $orderId, $now)) {
+                $expired++;
+            } else {
+                $skipped++;
+            }
+        }
+
+        return [
+            'candidates' => $orderIds->count(),
+            'expired' => $expired,
+            'skipped' => $skipped,
+        ];
+    }
+
+    /**
+     * Expire one order's pending reservation(s) if it is still eligible.
+     *
+     * Returns true only when this call performed the pending → cancelled
+     * transition. Concurrent acceptance/cancellation makes it return false,
+     * so stock is released at most once.
+     */
+    public function expireOrderReservations(int $orderId, ?CarbonInterface $now = null): bool
+    {
+        $now ??= now();
+
+        return DB::transaction(function () use ($orderId, $now): bool {
+            // The order row is the lifecycle mutex shared with
+            // accept/cancel/return.
+            $lockedOrder = Order::query()->lockForUpdate()->find($orderId);
+
+            if ($lockedOrder === null || $lockedOrder->status !== Order::STATUS_PENDING) {
+                return false;
+            }
+
+            $reservations = StockReservation::query()
+                ->where('order_id', $lockedOrder->id)
+                ->where('status', StockReservation::STATUS_PENDING)
+                ->orderBy('product_variant_id')
+                ->orderBy('id')
+                ->lockForUpdate()
+                ->get();
+
+            if ($reservations->isEmpty()) {
+                return false;
+            }
+
+            $hasDueReservation = $reservations->contains(
+                static fn (StockReservation $reservation): bool => $reservation->expires_at !== null
+                    && $reservation->expires_at->lessThanOrEqualTo($now),
+            );
+
+            if (! $hasDueReservation) {
+                return false;
+            }
+
+            // If one line is due, the whole pending order is expired. Release
+            // every still-pending reservation for that order exactly once.
+            foreach ($reservations as $reservation) {
+                $this->releaseReservation(
+                    $reservation,
+                    null,
+                    'নির্ধারিত সময়ের মধ্যে অর্ডার গ্রহণ না করায় রিজার্ভেশন স্বয়ংক্রিয়ভাবে ছেড়ে দেওয়া হয়েছে।',
+                    StockReservation::RELEASE_EXPIRED,
+                );
+            }
+
+            $lockedOrder->update([
+                'status' => Order::STATUS_CANCELLED,
+                'cancelled_at' => now(),
+                'cancelled_by' => 'expiry',
+            ]);
+
+            $this->appendStatusEvent(
+                $lockedOrder,
+                Order::STATUS_PENDING,
+                Order::STATUS_CANCELLED,
+                null,
+                'নির্ধারিত সময়ের মধ্যে অর্ডার গ্রহণ না করায় রিজার্ভেশন স্বয়ংক্রিয়ভাবে ছাড়া হয়েছে।',
+                'system',
+            );
+
+            return true;
+        }, 3);
+    }
+
+    /**
+     * @param  array<int, array{order_item_id:int|string, quantity_kg:int|float|string}>  $lines
+     * @return array<int, int> order item id => requested units
+     */
+    private function normalizeReturnLines(array $lines): array
+    {
+        $normalized = [];
+
+        foreach ($lines as $line) {
+            if (! is_array($line)) {
+                throw ValidationException::withMessages([
+                    'returns' => 'ফেরতের প্রতিটি লাইনে আইটেম ও পরিমাণ দিতে হবে।',
+                ]);
+            }
+
+            $itemId = (int) ($line['order_item_id'] ?? 0);
+
+            if ($itemId <= 0) {
+                throw ValidationException::withMessages([
+                    'returns' => 'ফেরতের জন্য সঠিক অর্ডার আইটেম নির্বাচন করুন।',
+                ]);
+            }
+
+            try {
+                $units = Kilograms::toUnits($line['quantity_kg'] ?? null);
+            } catch (InvalidArgumentException) {
+                throw ValidationException::withMessages([
+                    'returns' => 'ফেরতের পরিমাণ সঠিক কেজি মান হতে হবে (সর্বোচ্চ ৪ দশমিক স্থান)।',
+                ]);
+            }
+
+            if ($units <= 0) {
+                throw ValidationException::withMessages([
+                    'returns' => 'ফেরতের পরিমাণ শূন্যের বেশি হতে হবে।',
+                ]);
+            }
+
+            // Duplicate item lines in one submission are merged before the
+            // cumulative check, so they cannot bypass the limit.
+            $normalized[$itemId] = ($normalized[$itemId] ?? 0) + $units;
+        }
+
+        return $normalized;
     }
 
     /**
@@ -318,9 +620,9 @@ class OrderService
     {
         foreach ($lines as $line) {
             $level = $levels[$line['variant_id']] ?? null;
-            $available = $level?->available() ?? 0.0;
+            $requested = Kilograms::toUnits($line['requested_kg'] ?? 0);
 
-            if ($level === null || $available + 0.0001 < $line['requested_kg']) {
+            if ($level === null || $level->availableUnits() < $requested) {
                 $variant = ProductVariant::find($line['variant_id']);
                 $label = $variant?->displayLabel() ?? ('#'.$line['variant_id']);
 
@@ -333,25 +635,29 @@ class OrderService
 
     private function reserveLine(Order $order, int $variantId, float $kilograms, User $actor): void
     {
+        $requested = Kilograms::toUnits($kilograms);
         $level = $this->lockStockLevel($variantId);
 
-        if ($level->available() + 0.0001 < $kilograms) {
+        if ($level->availableUnits() < $requested) {
             throw ValidationException::withMessages([
                 'items' => 'স্টক রিজার্ভ করা যায়নি — অন্য একটি চেকআউট একই স্টক নিয়ে নিয়েছে।',
             ]);
         }
 
-        $level->reserved_kg = round((float) $level->reserved_kg + $kilograms, 4);
+        $level->reserved_kg = Kilograms::fromUnits($level->reservedUnits() + $requested);
         $level->syncAvailable();
         $level->save();
+
+        $ttlHours = (int) config('orders.reservation_ttl_hours', 24);
 
         StockReservation::create([
             'product_variant_id' => $variantId,
             'order_id' => $order->id,
-            'reserved_kg' => $kilograms,
+            'reserved_kg' => Kilograms::fromUnits($requested),
             'reference_type' => 'order',
             'reference_id' => (string) $order->id,
             'status' => StockReservation::STATUS_PENDING,
+            'expires_at' => $ttlHours > 0 ? now()->addHours($ttlHours) : null,
             'actor_user_id' => $actor->id,
         ]);
 
@@ -360,7 +666,7 @@ class OrderService
             type: StockMovement::TYPE_RESERVE,
             bucket: StockMovement::BUCKET_RESERVED,
             direction: StockMovement::DIRECTION_IN,
-            kilograms: $kilograms,
+            kilograms: Kilograms::fromUnits($requested),
             operationKey: 'reserve:order:'.$order->id.':variant:'.$variantId,
             order: $order,
             actor: $actor,
@@ -368,39 +674,82 @@ class OrderService
         );
     }
 
-    private function releaseReservations(Order $order, User $actor, ?string $note): void
+    private function clearReservationExpiry(Order $order): void
     {
+        StockReservation::query()
+            ->where('order_id', $order->id)
+            ->where('status', StockReservation::STATUS_PENDING)
+            ->whereNotNull('expires_at')
+            ->update(['expires_at' => null]);
+    }
+
+    private function releaseReservations(
+        Order $order,
+        ?User $actor,
+        ?string $note,
+        string $reason,
+    ): void {
         $reservations = StockReservation::query()
             ->where('order_id', $order->id)
             ->where('status', StockReservation::STATUS_PENDING)
+            ->orderBy('product_variant_id')
+            ->orderBy('id')
             ->lockForUpdate()
             ->get();
 
         foreach ($reservations as $reservation) {
-            $variantId = (int) $reservation->product_variant_id;
-            $kilograms = (float) $reservation->reserved_kg;
+            $this->releaseReservation($reservation, $actor, $note, $reason);
+        }
+    }
 
-            $level = $this->lockStockLevel($variantId);
-            $level->reserved_kg = max(0, round((float) $level->reserved_kg - $kilograms, 4));
-            $level->syncAvailable();
-            $level->save();
+    private function releaseReservation(
+        StockReservation $reservation,
+        ?User $actor,
+        ?string $note,
+        string $reason,
+    ): void {
+        if (! $reservation->isPending()) {
+            return;
+        }
 
-            $reservation->status = StockReservation::STATUS_RELEASED;
-            $reservation->released_at = now();
-            $reservation->save();
+        $variantId = (int) $reservation->product_variant_id;
+        $units = Kilograms::toUnits($reservation->reserved_kg);
+        $level = $this->lockStockLevel($variantId);
 
-            $this->recordMovement(
-                variantId: $variantId,
-                type: StockMovement::TYPE_RELEASE,
-                bucket: StockMovement::BUCKET_RESERVED,
-                direction: StockMovement::DIRECTION_OUT,
-                kilograms: $kilograms,
-                operationKey: 'release:order:'.$order->id.':variant:'.$variantId,
-                order: $order,
-                actor: $actor,
-                note: $note,
+        if ($level->reservedUnits() < $units) {
+            throw new DomainException(
+                "Reserved stock for variant {$variantId} is below the reservation being released.",
             );
         }
+
+        $level->reserved_kg = Kilograms::fromUnits($level->reservedUnits() - $units);
+        $level->syncAvailable();
+        $level->save();
+
+        $reservation->status = StockReservation::STATUS_RELEASED;
+        $reservation->released_at = now();
+        $reservation->release_reason = $reason;
+        $reservation->save();
+
+        $operationKey = 'release:order:'.$reservation->order_id.':variant:'.$variantId;
+
+        if (StockMovement::query()->where('operation_key', $operationKey)->exists()) {
+            throw new DomainException(
+                "Release movement {$operationKey} already exists while the reservation is still pending.",
+            );
+        }
+
+        $this->recordMovement(
+            variantId: $variantId,
+            type: StockMovement::TYPE_RELEASE,
+            bucket: StockMovement::BUCKET_RESERVED,
+            direction: StockMovement::DIRECTION_OUT,
+            kilograms: Kilograms::fromUnits($units),
+            operationKey: $operationKey,
+            order: $reservation->order,
+            actor: $actor,
+            note: $note,
+        );
     }
 
     private function dispatchReservations(Order $order, User $actor): void
@@ -408,21 +757,30 @@ class OrderService
         $reservations = StockReservation::query()
             ->where('order_id', $order->id)
             ->where('status', StockReservation::STATUS_PENDING)
+            ->orderBy('product_variant_id')
+            ->orderBy('id')
             ->lockForUpdate()
             ->get();
 
         foreach ($reservations as $reservation) {
             $variantId = (int) $reservation->product_variant_id;
-            $kilograms = (float) $reservation->reserved_kg;
-
+            $units = Kilograms::toUnits($reservation->reserved_kg);
             $level = $this->lockStockLevel($variantId);
-            $level->on_hand_kg = max(0, round((float) $level->on_hand_kg - $kilograms, 4));
-            $level->reserved_kg = max(0, round((float) $level->reserved_kg - $kilograms, 4));
+
+            if ($level->onHandUnits() < $units || $level->reservedUnits() < $units) {
+                throw new DomainException(
+                    "Cannot dispatch variant {$variantId}: on-hand or reserved stock is below the reservation.",
+                );
+            }
+
+            $level->on_hand_kg = Kilograms::fromUnits($level->onHandUnits() - $units);
+            $level->reserved_kg = Kilograms::fromUnits($level->reservedUnits() - $units);
             $level->syncAvailable();
             $level->save();
 
             $reservation->status = StockReservation::STATUS_FULFILLED;
             $reservation->fulfilled_at = now();
+            $reservation->expires_at = null;
             $reservation->save();
 
             $this->recordMovement(
@@ -430,7 +788,7 @@ class OrderService
                 type: StockMovement::TYPE_DISPATCH,
                 bucket: StockMovement::BUCKET_PHYSICAL,
                 direction: StockMovement::DIRECTION_OUT,
-                kilograms: $kilograms,
+                kilograms: Kilograms::fromUnits($units),
                 operationKey: 'dispatch-physical:order:'.$order->id.':variant:'.$variantId,
                 order: $order,
                 actor: $actor,
@@ -442,7 +800,7 @@ class OrderService
                 type: StockMovement::TYPE_DISPATCH,
                 bucket: StockMovement::BUCKET_RESERVED,
                 direction: StockMovement::DIRECTION_OUT,
-                kilograms: $kilograms,
+                kilograms: Kilograms::fromUnits($units),
                 operationKey: 'dispatch-reserved:order:'.$order->id.':variant:'.$variantId,
                 order: $order,
                 actor: $actor,
@@ -457,13 +815,14 @@ class OrderService
         string $to,
         ?User $actor,
         ?string $note,
+        ?string $actorRole = null,
     ): void {
         OrderStatusEvent::create([
             'order_id' => $order->id,
             'from_status' => $from,
             'to_status' => $to,
             'actor_user_id' => $actor?->id,
-            'actor_role' => $actor?->role,
+            'actor_role' => $actorRole ?? $actor?->role,
             'note' => $note,
         ]);
     }
@@ -504,7 +863,7 @@ class OrderService
         string $type,
         string $bucket,
         string $direction,
-        float $kilograms,
+        int|float|string $kilograms,
         string $operationKey,
         Order $order,
         ?User $actor,
@@ -533,5 +892,14 @@ class OrderService
         } while (Order::query()->where('code', $code)->exists());
 
         return $code;
+    }
+
+    private function generateReturnReference(): string
+    {
+        do {
+            $reference = 'RET-'.now()->format('Ymd').'-'.Str::upper(Str::random(6));
+        } while (OrderReturnBatch::query()->where('reference', $reference)->exists());
+
+        return $reference;
     }
 }

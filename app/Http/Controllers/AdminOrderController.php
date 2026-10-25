@@ -3,11 +3,11 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
-use App\Models\ProductVariant;
 use App\Services\OrderService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
 class AdminOrderController extends Controller
@@ -47,7 +47,13 @@ class AdminOrderController extends Controller
     {
         $this->authorize('viewAny', Order::class);
 
-        $order->load(['items', 'statusEvents.actor', 'invoice', 'user']);
+        $order->load([
+            'items.returns',
+            'statusEvents.actor',
+            'returnBatches.actor',
+            'invoice',
+            'user',
+        ]);
 
         return view('admin.orders.show', compact('order'));
     }
@@ -82,24 +88,50 @@ class AdminOrderController extends Controller
         $this->authorize('recordReturn', $order);
 
         $validated = $request->validate([
-            'product_variant_id' => [
-                'required',
-                'integer',
-                Rule::exists('order_items', 'product_variant_id')->where('order_id', $order->id),
-            ],
-            'quantity_kg' => ['required', 'numeric', 'min:0.001', 'max:100000'],
+            'returns' => ['required', 'array', 'min:1'],
+            'returns.*' => ['nullable', 'decimal:0,4', 'gt:0'],
+            'reason' => ['nullable', 'string', 'max:500'],
             'operation_key' => ['required', 'string', 'max:80'],
         ]);
 
-        $variant = ProductVariant::findOrFail($validated['product_variant_id']);
+        $lines = [];
 
-        $this->orders->recordReturn(
+        foreach ($validated['returns'] as $itemId => $quantity) {
+            if ($quantity === null || $quantity === '') {
+                continue;
+            }
+
+            $itemId = (int) $itemId;
+
+            if ($itemId <= 0) {
+                throw ValidationException::withMessages([
+                    'returns' => 'ফেরতের জন্য সঠিক অর্ডার আইটেম নির্বাচন করুন।',
+                ]);
+            }
+
+            $lines[] = [
+                'order_item_id' => $itemId,
+                'quantity_kg' => (string) $quantity,
+            ];
+        }
+
+        if ($lines === []) {
+            throw ValidationException::withMessages([
+                'returns' => 'অন্তত একটি পণ্যের ফেরত পরিমাণ দিন।',
+            ]);
+        }
+
+        $batch = $this->orders->recordReturn(
             $order,
             $request->user(),
-            [(int) $variant->id => (float) $validated['quantity_kg']],
+            $lines,
             $validated['operation_key'],
+            $validated['reason'] ?? null,
         );
 
-        return back()->with('status', 'ফেরত পণ্য স্টকে যোগ করা হয়েছে।');
+        return back()->with(
+            'status',
+            "ফেরত রেকর্ড {$batch->reference} তৈরি হয়েছে এবং যাচাইকৃত পণ্য স্টকে যোগ হয়েছে।",
+        );
     }
 }

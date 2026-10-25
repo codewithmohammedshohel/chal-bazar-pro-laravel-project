@@ -71,6 +71,28 @@ php artisan test
 Tests use an isolated in-memory SQLite database and fake mail/notifications.
 No real email is sent and no production database is touched.
 
+The MySQL suite runs against a disposable database. Run the additive
+migrations first, then override the connection:
+
+```bash
+php artisan migrate --force
+DB_CONNECTION=mysql DB_DATABASE=chal_bazar_mysql_test \
+  DB_USERNAME=... DB_PASSWORD=... php artisan test
+```
+
+See `docs/inventory-integrity.md` for stock accounting, cumulative return
+limits, reservation expiry, the scheduler command and the real multi-process
+MySQL concurrency tests.
+
+## Inventory integrity
+
+- Returns are linked to real order items, capped against the historical
+  dispatched weight, recorded in `order_return_batches` / `order_returns`, and
+  restocked exactly once.
+- Pending reservations expire after `ORDER_RESERVATION_TTL_HOURS` (default 24)
+  through `php artisan orders:expire-reservations` and the scheduler.
+- All stock arithmetic uses integer 1/10,000 kg units.
+
 ## Repository hygiene
 
 The following are intentionally excluded from Git: `.env`, SQLite databases,
@@ -82,4 +104,5 @@ logs and caches.
 - SMTP is not configured, so password-reset emails are only verified with fakes.
 - Email verification is not enabled in the current design.
 - OAuth/phone OTP from the Firebase app is not implemented.
-- Catalog, cart, checkout and inventory belong to later milestones.
+- PDF invoice generation, WhatsApp notifications, payment gateways and cPanel
+  deployment are deferred to later milestones.

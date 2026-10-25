@@ -180,8 +180,8 @@ class OrderAuthorizationTest extends TestCase
 
         $this->actingAs($staff)
             ->post(route('admin.orders.return', $order), [
-                'product_variant_id' => $variant->id,
-                'quantity_kg' => 1,
+                'returns' => [$order->items()->firstOrFail()->id => '1'],
+                'reason' => 'যাচাইকৃত ফেরত',
                 'operation_key' => 'staff-return-1',
             ])
             ->assertForbidden();
@@ -201,8 +201,8 @@ class OrderAuthorizationTest extends TestCase
 
         $this->actingAs($customer)
             ->post(route('admin.orders.return', $order), [
-                'product_variant_id' => $variant->id,
-                'quantity_kg' => 1,
+                'returns' => [$order->items()->firstOrFail()->id => '1'],
+                'reason' => 'যাচাইকৃত ফেরত',
                 'operation_key' => 'customer-return-1',
             ])
             ->assertForbidden();
@@ -220,10 +220,12 @@ class OrderAuthorizationTest extends TestCase
             StockLevel::query()->where('product_variant_id', $variant->id)->firstOrFail()->on_hand_kg,
         );
 
+        $item = $order->items()->firstOrFail();
+
         $this->actingAs($admin)
             ->post(route('admin.orders.return', $order), [
-                'product_variant_id' => $variant->id,
-                'quantity_kg' => 1,
+                'returns' => [$item->id => '1'],
+                'reason' => 'গ্রাহক পণ্য ফেরত দিয়েছেন',
                 'operation_key' => 'admin-return-1',
             ])
             ->assertRedirect();
@@ -232,6 +234,16 @@ class OrderAuthorizationTest extends TestCase
             '9.0000',
             StockLevel::query()->where('product_variant_id', $variant->id)->firstOrFail()->on_hand_kg,
         );
+
+        $this->assertDatabaseHas('order_returns', [
+            'order_item_id' => $item->id,
+            'quantity_kg' => '1.0000',
+        ]);
+        $this->assertDatabaseHas('order_return_batches', [
+            'order_id' => $order->id,
+            'operation_key' => 'admin-return-1',
+            'actor_user_id' => $admin->id,
+        ]);
     }
 
     public function test_suspended_accounts_lose_access_to_order_pages(): void

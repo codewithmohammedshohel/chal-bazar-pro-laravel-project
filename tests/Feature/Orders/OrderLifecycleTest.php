@@ -160,6 +160,7 @@ class OrderLifecycleTest extends TestCase
 
         $reservation = StockReservation::query()->where('order_id', $order->id)->firstOrFail();
         $this->assertSame(StockReservation::STATUS_RELEASED, $reservation->status);
+        $this->assertSame(StockReservation::RELEASE_CUSTOMER, $reservation->release_reason);
         $this->assertNotNull($reservation->released_at);
         $this->assertNull($reservation->fulfilled_at);
 
@@ -246,13 +247,19 @@ class OrderLifecycleTest extends TestCase
 
         $this->assertSame('48.0000', $this->level($variant->id)->on_hand_kg);
 
-        $this->orders->recordReturn($order, $this->admin, [$variant->id => 1.5], 'return-key-1');
+        $item = $order->items()->firstOrFail();
+
+        $this->orders->recordReturn($order, $this->admin, [
+            ['order_item_id' => $item->id, 'quantity_kg' => '1.5'],
+        ], 'return-key-1');
 
         $this->assertSame('49.5000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame('49.5000', $this->level($variant->id)->available_kg);
 
         // The same operation key must not restock the same goods twice.
-        $this->orders->recordReturn($order, $this->admin, [$variant->id => 1.5], 'return-key-1');
+        $this->orders->recordReturn($order, $this->admin, [
+            ['order_item_id' => $item->id, 'quantity_kg' => '1.5'],
+        ], 'return-key-1');
 
         $this->assertSame('49.5000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame(1, StockMovement::query()
@@ -261,7 +268,9 @@ class OrderLifecycleTest extends TestCase
             ->count());
 
         // A distinct, newly verified return may legitimately restock again.
-        $this->orders->recordReturn($order, $this->admin, [$variant->id => 0.5], 'return-key-2');
+        $this->orders->recordReturn($order, $this->admin, [
+            ['order_item_id' => $item->id, 'quantity_kg' => '0.5'],
+        ], 'return-key-2');
 
         $this->assertSame('50.0000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame(2, StockMovement::query()
@@ -274,9 +283,12 @@ class OrderLifecycleTest extends TestCase
     {
         $variant = $this->makeVariant(onHandKg: 50);
         $order = $this->place($variant->id, 2);
+        $item = $order->items()->firstOrFail();
 
         try {
-            $this->orders->recordReturn($order, $this->admin, [$variant->id => 1.0], 'early-return');
+            $this->orders->recordReturn($order, $this->admin, [
+                ['order_item_id' => $item->id, 'quantity_kg' => '1.0'],
+            ], 'early-return');
             $this->fail('A return before dispatch should have been rejected.');
         } catch (ValidationException) {
             $this->addToAssertionCount(1);
@@ -288,18 +300,23 @@ class OrderLifecycleTest extends TestCase
             ->count());
     }
 
-    public function test_return_rejects_a_variant_that_is_not_on_the_order(): void
+    public function test_return_rejects_an_item_that_is_not_on_the_order(): void
     {
         $variant = $this->makeVariant(onHandKg: 50);
         $other = $this->makeVariant(onHandKg: 50);
 
         $order = $this->place($variant->id, 1);
+        $otherOrder = $this->place($other->id, 1);
+        $otherItem = $otherOrder->items()->firstOrFail();
+
         $this->orders->transition($order, Order::STATUS_ACCEPTED, $this->admin);
         $this->orders->transition($order->fresh(), Order::STATUS_IN_TRANSIT, $this->admin);
 
         try {
-            $this->orders->recordReturn($order, $this->admin, [$other->id => 1.0], 'return-wrong-variant');
-            $this->fail('A variant outside the order should have been rejected.');
+            $this->orders->recordReturn($order, $this->admin, [
+                ['order_item_id' => $otherItem->id, 'quantity_kg' => '1.0'],
+            ], 'return-wrong-item');
+            $this->fail('An order item from another order should have been rejected.');
         } catch (ValidationException) {
             $this->addToAssertionCount(1);
         }

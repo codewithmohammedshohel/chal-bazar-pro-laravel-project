@@ -14,6 +14,10 @@ class StockReservation extends Model
     public const STATUS_FULFILLED = 'fulfilled';
     public const STATUS_RELEASED = 'released';
 
+    public const RELEASE_CUSTOMER = 'customer_cancelled';
+    public const RELEASE_SHOP = 'shop_cancelled';
+    public const RELEASE_EXPIRED = 'expired';
+
     protected $fillable = [
         'product_variant_id',
         'order_id',
@@ -23,6 +27,8 @@ class StockReservation extends Model
         'status',
         'fulfilled_at',
         'released_at',
+        'expires_at',
+        'release_reason',
         'actor_user_id',
     ];
 
@@ -30,6 +36,7 @@ class StockReservation extends Model
         'reserved_kg' => 'decimal:4',
         'fulfilled_at' => 'datetime',
         'released_at' => 'datetime',
+        'expires_at' => 'datetime',
     ];
 
     public function productVariant(): BelongsTo
@@ -50,5 +57,12 @@ class StockReservation extends Model
     public function isPending(): bool
     {
         return $this->status === self::STATUS_PENDING;
+    }
+
+    public function isExpired(): bool
+    {
+        return $this->isPending()
+            && $this->expires_at !== null
+            && $this->expires_at->lessThanOrEqualTo(now());
     }
 }

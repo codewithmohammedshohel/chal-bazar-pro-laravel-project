@@ -34,6 +34,11 @@
                             <span>
                                 <span class="font-semibold text-stone-900">{{ $item->product_title }}</span>
                                 <span class="block text-xs text-stone-500">{{ $item->variant_label }} · {{ $item->weight_kg }} kg × {{ $item->quantity }}</span>
+                                <span class="mt-1 block text-xs text-stone-500">
+                                    পাঠানো: {{ $item->dispatchedWeightLabel() }} ·
+                                    ফেরত: {{ $item->returnedWeightLabel() }} ·
+                                    বাকি: {{ $item->remainingWeightLabel() }}
+                                </span>
                             </span>
                             <span class="font-semibold">৳ {{ number_format((float) $item->line_total, 2) }}</span>
                         </li>
@@ -87,24 +92,71 @@
 
                 <section class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
                     <h2 class="text-lg font-bold text-stone-900">ফেরত পণ্য</h2>
-                    <form method="POST" action="{{ route('admin.orders.return', $order) }}" class="mt-4 space-y-3">
-                        @csrf
-                        <label for="product_variant_id" class="block text-xs font-semibold uppercase tracking-wide text-stone-500">ভ্যারিয়েন্ট</label>
-                        <select id="product_variant_id" name="product_variant_id" class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
+
+                    @can('recordReturn', $order)
+                        <form method="POST" action="{{ route('admin.orders.return', $order) }}" class="mt-4 space-y-3">
+                            @csrf
                             @foreach ($order->items as $item)
-                                @if ($item->product_variant_id)
-                                    <option value="{{ $item->product_variant_id }}">{{ $item->product_title }} — {{ $item->variant_label }}</option>
-                                @endif
+                                <div class="rounded-xl border border-stone-200 p-3">
+                                    <label for="return-{{ $item->id }}" class="block text-xs font-semibold text-stone-700">
+                                        {{ $item->product_title }} — {{ $item->variant_label }}
+                                    </label>
+                                    <p class="mt-1 text-xs text-stone-500">
+                                        ডিসপ্যাচ: {{ $item->dispatchedWeightLabel() }} ·
+                                        আগে ফেরত: {{ $item->returnedWeightLabel() }} ·
+                                        বাকি: {{ $item->remainingWeightLabel() }}
+                                    </p>
+                                    @if ($item->remainingReturnableUnits() > 0)
+                                        <input id="return-{{ $item->id }}"
+                                               name="returns[{{ $item->id }}]"
+                                               type="number" step="0.0001" min="0.0001"
+                                               max="{{ \App\Support\Kilograms::format($item->remainingReturnableUnits()) }}"
+                                               placeholder="ফেরতের পরিমাণ (কেজি)"
+                                               class="mt-2 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
+                                    @else
+                                        <p class="mt-2 text-xs font-semibold text-emerald-700">সম্পূর্ণ পরিমাণ ইতিমধ্যে ফেরত হয়েছে।</p>
+                                    @endif
+                                </div>
                             @endforeach
-                        </select>
-                        <input name="quantity_kg" type="number" step="0.001" min="0.001" required placeholder="পরিমাণ (কেজি)"
-                               class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
-                        <input name="operation_key" required maxlength="80" placeholder="রেফারেন্স (যেমন return-{{ $order->id }}-1)"
-                               value="return-{{ $order->id }}-1"
-                               class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
-                        <button class="w-full rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">স্টকে ফেরত যোগ করুন</button>
-                    </form>
-                    <p class="mt-3 text-xs leading-5 text-stone-500">শুধুমাত্র যাচাইকৃত ফিজিক্যাল ফেরতের পর ব্যবহার করুন। একই operation key দুইবার কাজ করবে না।</p>
+                            <textarea name="reason" rows="2" maxlength="500" placeholder="ফেরতের কারণ / যাচাইকরণের নোট (ঐচ্ছিক)"
+                                      class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"></textarea>
+                            <input name="operation_key" required maxlength="80" placeholder="রেফারেন্স (যেমন return-{{ $order->id }}-1)"
+                                   value="return-{{ $order->id }}-{{ now()->format('YmdHis') }}-{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(4)) }}"
+                                   class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
+                            <button class="w-full rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">স্টকে ফেরত যোগ করুন</button>
+                        </form>
+                        <p class="mt-3 text-xs leading-5 text-stone-500">
+                            শুধুমাত্র যাচাইকৃত ও অনুমোদিত ফিজিক্যাল ফেরতের পর ব্যবহার করুন। প্রতি আইটেমে ডিসপ্যাচ করা পরিমাণের বেশি ফেরত নেওয়া যাবে না; একই operation key দুইবার স্টক বাড়াবে না।
+                        </p>
+                    @else
+                        <p class="mt-3 text-xs leading-5 text-stone-500">ফেরত রেকর্ড করতে অর্ডারটি ডিসপ্যাচ করা থাকতে হবে এবং আপনার inventory অনুমতি থাকতে হবে।</p>
+                    @endcan
+                </section>
+
+                <section class="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm">
+                    <h2 class="text-lg font-bold text-stone-900">ফেরতের ইতিহাস</h2>
+                    @forelse ($order->returnBatches as $batch)
+                        <div class="mt-3 rounded-xl bg-stone-50 p-3 text-xs">
+                            <p class="font-mono font-semibold text-stone-900">{{ $batch->reference }}</p>
+                            <p class="mt-1 text-stone-500">
+                                {{ $batch->approved_at?->format('d M Y, h:i A') }}
+                                @if ($batch->actor) · {{ $batch->actor->name }} @endif
+                            </p>
+                            <ul class="mt-2 space-y-1">
+                                @foreach ($batch->returns as $return)
+                                    <li class="flex justify-between gap-2">
+                                        <span>{{ $return->orderItem?->product_title }} — {{ $return->orderItem?->variant_label }}</span>
+                                        <span class="font-semibold">{{ \App\Support\Kilograms::formatKg(\App\Support\Kilograms::toUnits($return->quantity_kg)) }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                            @if ($batch->reason)
+                                <p class="mt-2 text-stone-600">{{ $batch->reason }}</p>
+                            @endif
+                        </div>
+                    @empty
+                        <p class="mt-3 text-xs text-stone-500">এখনও কোনো ফেরত রেকর্ড হয়নি।</p>
+                    @endforelse
                 </section>
             </aside>
         </div>

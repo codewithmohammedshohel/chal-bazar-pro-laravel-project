@@ -76,6 +76,16 @@ class Order extends Model
         return $this->hasMany(OrderStatusEvent::class)->orderBy('created_at')->orderBy('id');
     }
 
+    public function returnBatches(): HasMany
+    {
+        return $this->hasMany(OrderReturnBatch::class)->orderBy('id');
+    }
+
+    public function returns(): HasMany
+    {
+        return $this->hasMany(OrderReturn::class);
+    }
+
     public function invoice(): HasOne
     {
         return $this->hasOne(Invoice::class);
