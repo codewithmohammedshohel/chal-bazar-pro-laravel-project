@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CatalogAdminController;
 use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
 use App\Livewire\Auth\ForgotPassword;
@@ -33,4 +34,8 @@ Route::middleware('auth')->group(function () {
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+
+    Route::get('/admin/catalog/categories', [CatalogAdminController::class, 'categories'])->name('admin.catalog.categories');
+    Route::get('/admin/catalog/products', [CatalogAdminController::class, 'products'])->name('admin.catalog.products');
+    Route::get('/admin/catalog/variants', [CatalogAdminController::class, 'variants'])->name('admin.catalog.variants');
 });
