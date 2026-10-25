@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\CatalogController;
 use App\Http\Controllers\DashboardController;
 use App\Livewire\Auth\ForgotPassword;
 use App\Livewire\Auth\Login;
@@ -8,10 +9,17 @@ use App\Livewire\Auth\Register;
 use App\Livewire\Auth\ResetPassword;
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', function () {
-    return view('welcome');
-});
+/*
+ * Public storefront
+ */
+Route::get('/', [CatalogController::class, 'home'])->name('home');
+Route::get('/other-products', [CatalogController::class, 'otherProducts'])->name('storefront.other-products');
+Route::get('/about', [CatalogController::class, 'about'])->name('storefront.about');
+Route::get('/products/{product}', [CatalogController::class, 'show'])->name('storefront.product');
 
+/*
+ * Authentication
+ */
 Route::middleware('guest')->group(function () {
     Route::get('/login', Login::class)->name('login');
     Route::get('/register', Register::class)->name('register');

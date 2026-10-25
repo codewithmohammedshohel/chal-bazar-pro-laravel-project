@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 600" role="img" aria-label="Demo spice placeholder image">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fecdd3"/>
+      <stop offset="1" stop-color="#be123c"/>
+    </linearGradient>
+  </defs>
+  <rect width="800" height="600" fill="url(#bg)"/>
+  <g fill="#fff1f2" opacity="0.92">
+    <path d="M400 180c60 80 90 140 90 190a90 90 0 0 1-180 0c0-50 30-110 90-190z"/>
+    <path d="M400 260c28 42 42 72 42 98a42 42 0 0 1-84 0c0-26 14-56 42-98z" fill="#be123c" opacity="0.35"/>
+  </g>
+  <text x="400" y="520" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="40" font-weight="700" fill="#4c0519">Demo · Spice 1</text>
+</svg>
