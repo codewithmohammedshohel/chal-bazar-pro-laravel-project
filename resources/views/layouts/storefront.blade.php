@@ -55,6 +55,14 @@
 
             <div class="order-5 flex items-center gap-3 text-sm sm:order-none">
                 @auth
+                    <a href="{{ route('cart.index') }}" class="relative font-medium text-stone-700 hover:text-amber-700">
+                        কার্ট
+                        @php($cartCount = app(\App\Services\CartService::class)->count())
+                        @if ($cartCount > 0)
+                            <span class="absolute -right-4 -top-2 rounded-full bg-amber-600 px-1.5 py-0.5 text-[10px] font-bold text-white">{{ $cartCount }}</span>
+                        @endif
+                    </a>
+                    <a href="{{ route('orders.index') }}" class="font-medium text-stone-700 hover:text-amber-700">অর্ডার</a>
                     <a href="{{ route('dashboard') }}" class="font-medium text-amber-800 hover:text-amber-600">ড্যাশবোর্ড</a>
                     <a href="{{ route('logout') }}" class="text-stone-600 hover:text-stone-900">লগআউট</a>
                 @else
@@ -89,8 +97,8 @@
             <div>
                 <p class="text-sm font-semibold uppercase tracking-wide text-stone-500">অর্ডার</p>
                 <p class="mt-3 text-sm leading-6 text-stone-600">
-                    অনলাইন কার্ট, COD চেকআউট ও স্টক রিজার্ভেশন পরবর্তী Milestone-এ যুক্ত হবে।
-                    এখন এই সাইট থেকে কোনো অর্ডার নেওয়া হয় না।
+                    ক্যাশ অন ডেলিভারি (COD) চেকআউট চালু আছে। দোকান থেকে ১০ কিমি পর্যন্ত ডেলিভারি ফ্রি।
+                    ডেমো ক্যাটালগ — সব দাম শুধু ডেমো উদ্দেশ্যে।
                 </p>
             </div>
         </div>

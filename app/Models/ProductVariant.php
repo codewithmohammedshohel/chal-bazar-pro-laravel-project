@@ -8,6 +8,8 @@ use Illuminate\Database\Eloquent\Attributes\Hidden;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 #[Fillable([
     'product_id',
@@ -84,5 +86,28 @@ class ProductVariant extends Model
     public function weightLabel(): string
     {
         return rtrim(rtrim((string) $this->weight_kg, '0'), '.').' kg';
+    }
+
+    public function stockLevel(): HasOne
+    {
+        return $this->hasOne(StockLevel::class, 'product_variant_id');
+    }
+
+    public function stockReservations(): HasMany
+    {
+        return $this->hasMany(StockReservation::class, 'product_variant_id');
+    }
+
+    public function stockMovements(): HasMany
+    {
+        return $this->hasMany(StockMovement::class, 'product_variant_id');
+    }
+
+    /**
+     * Convert a quantity of this selling unit into canonical kilograms.
+     */
+    public function kilogramsFor(int $quantity): float
+    {
+        return round(((float) $this->weight_kg) * max(0, $quantity), 4);
     }
 }

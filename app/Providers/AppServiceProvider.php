@@ -2,7 +2,9 @@
 
 namespace App\Providers;
 
+use App\Models\Order;
 use App\Models\User;
+use App\Policies\OrderPolicy;
 use App\Support\Permissions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -39,5 +41,7 @@ class AppServiceProvider extends ServiceProvider
         foreach (Permissions::all() as $permission) {
             Gate::define($permission, fn (User $user): bool => $user->hasPermission($permission));
         }
+
+        Gate::policy(Order::class, OrderPolicy::class);
     }
 }

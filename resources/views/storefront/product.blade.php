@@ -80,40 +80,38 @@
             @endif
 
             @if ($variants->isNotEmpty())
-                <div data-variant-selector class="mt-6 rounded-2xl border border-stone-200 bg-stone-50 p-4">
-                    <p class="text-xs font-semibold uppercase tracking-wide text-stone-500">ইউনিট বেছে নিন</p>
-
-                    <div class="mt-3 grid gap-2 sm:grid-cols-3">
-                        @foreach ($variants as $variant)
-                            <button type="button" data-variant-option
-                                    data-price="{{ number_format((float) $variant->retail_price, 2) }}"
-                                    data-label="{{ $variant->displayLabel() }} · {{ $variant->weightLabel() }}"
-                                    aria-pressed="{{ $loop->first ? 'true' : 'false' }}"
-                                    class="rounded-xl border border-stone-300 bg-white px-3 py-3 text-left transition hover:border-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-300 aria-[pressed=true]:border-amber-600 aria-[pressed=true]:bg-amber-50 aria-[pressed=true]:ring-1 aria-[pressed=true]:ring-amber-500">
-                                <span class="block text-sm font-semibold text-stone-900">{{ $variant->displayLabel() }}</span>
-                                @if ($variant->secondaryLabel())
-                                    <span class="block text-[11px] text-stone-400">{{ $variant->secondaryLabel() }}</span>
-                                @endif
-                                <span class="block text-xs text-stone-500">{{ $variant->weightLabel() }}</span>
-                                <span class="mt-1 block text-base font-bold text-stone-900">৳ {{ number_format((float) $variant->retail_price, 2) }}</span>
-                            </button>
-                        @endforeach
+                <form method="POST" action="{{ route('cart.add-item') }}" class="mt-6 space-y-3 rounded-2xl border border-stone-200 bg-white p-4">
+                    @csrf
+                    <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_120px]">
+                        <div>
+                            <label for="variant-select" class="block text-xs font-semibold uppercase tracking-wide text-stone-500">ইউনিট</label>
+                            <select id="variant-select" name="product_variant_id"
+                                    class="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200">
+                                @foreach ($variants as $variant)
+                                    <option value="{{ $variant->id }}">
+                                        {{ $variant->displayLabel() }}@if ($variant->secondaryLabel()) · {{ $variant->secondaryLabel() }}@endif · {{ $variant->weightLabel() }} — ৳ {{ number_format((float) $variant->retail_price, 2) }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div>
+                            <label for="variant-qty" class="block text-xs font-semibold uppercase tracking-wide text-stone-500">পরিমাণ</label>
+                            <input id="variant-qty" type="number" name="quantity" value="1" min="1" max="100"
+                                   class="mt-1 w-full rounded-xl border border-stone-300 px-3 py-2 text-sm focus:border-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-200">
+                        </div>
                     </div>
 
-                    <div class="mt-4 flex flex-wrap items-baseline justify-between gap-2">
-                        <p class="text-sm text-stone-600">
-                            নির্বাচিত: <strong data-selected-label>{{ $defaultVariant->displayLabel() }} · {{ $defaultVariant->weightLabel() }}</strong>
+                    @guest
+                        <p class="rounded-xl bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                            অর্ডার করতে <a href="{{ route('login') }}" class="font-semibold underline">লগইন</a> করুন।
                         </p>
-                        <p class="text-2xl font-extrabold text-stone-900">
-                            ৳ <span data-selected-price>{{ number_format((float) $defaultVariant->retail_price, 2) }}</span>
-                        </p>
-                    </div>
+                    @endguest
 
-                    <p class="mt-2 text-xs leading-5 text-stone-500">
-                        প্রতিটি ইউনিটের দাম আলাদা। বস্তার দাম কেজি-দর দিয়ে গুণ করা হয় না।
-                        সব দাম ডেমো — বর্তমান বাজারদর নয়।
-                    </p>
-                </div>
+                    <button type="submit" @guest disabled @endguest
+                            class="w-full rounded-full bg-amber-600 px-6 py-3 text-sm font-bold text-white hover:bg-amber-500 focus:outline-none focus:ring-2 focus:ring-amber-300 disabled:cursor-not-allowed disabled:opacity-50">
+                        কার্টে যোগ করুন
+                    </button>
+                </form>
             @else
                 <p class="mt-6 rounded-2xl bg-stone-100 p-4 text-sm font-medium text-stone-600">
                     এই পণ্যের দাম শীঘ্রই যোগ করা হবে।
@@ -150,8 +148,8 @@
             @endif
 
             <p class="mt-6 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
-                অনলাইন কার্ট, COD চেকআউট ও অর্ডার প্রসেসিং পরবর্তী Milestone-এ যুক্ত হবে।
-                এই পেজ থেকে এখন কোনো অর্ডার নেওয়া হয় না।
+                ক্যাশ অন ডেলিভারি (COD)। দোকান থেকে ১০ কিমি পর্যন্ত ডেলিভারি ফ্রি, এর বেশি হলে প্রতি অতিরিক্ত কিমিতে ১৫৳।
+                সব দাম ডেমো — বর্তমান বাজারদর নয়।
             </p>
         </section>
     </div>
@@ -167,33 +165,3 @@
         </section>
     @endif
 @endsection
-
-@push('scripts')
-    <script>
-        document.addEventListener('DOMContentLoaded', function () {
-            document.querySelectorAll('[data-variant-selector]').forEach(function (root) {
-                var buttons = root.querySelectorAll('[data-variant-option]');
-                var price = root.querySelector('[data-selected-price]');
-                var label = root.querySelector('[data-selected-label]');
-
-                buttons.forEach(function (button) {
-                    button.addEventListener('click', function () {
-                        buttons.forEach(function (item) {
-                            item.setAttribute('aria-pressed', 'false');
-                        });
-
-                        button.setAttribute('aria-pressed', 'true');
-
-                        if (price) {
-                            price.textContent = button.dataset.price;
-                        }
-
-                        if (label) {
-                            label.textContent = button.dataset.label;
-                        }
-                    });
-                });
-            });
-        });
-    </script>
-@endpush

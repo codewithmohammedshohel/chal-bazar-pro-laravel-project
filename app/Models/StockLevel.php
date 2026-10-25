@@ -5,11 +5,10 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use Illuminate\Database\Eloquent\SoftDeletes;
 
 class StockLevel extends Model
 {
-    use HasFactory, SoftDeletes;
+    use HasFactory;
 
     protected $fillable = [
         'product_variant_id',
@@ -29,8 +28,24 @@ class StockLevel extends Model
         return $this->belongsTo(ProductVariant::class, 'product_variant_id');
     }
 
+    /**
+     * Available stock is always derived, never trusted from the column alone.
+     */
+    public function available(): float
+    {
+        return round((float) $this->on_hand_kg - (float) $this->reserved_kg, 4);
+    }
+
     public function getAvailableAttribute(): float
     {
-        return max(0, (float) $this->on_hand_kg - (float) $this->reserved_kg);
+        return $this->available();
+    }
+
+    /**
+     * Keep the cached available_kg column in sync after either bucket changes.
+     */
+    public function syncAvailable(): void
+    {
+        $this->available_kg = $this->available();
     }
 }
