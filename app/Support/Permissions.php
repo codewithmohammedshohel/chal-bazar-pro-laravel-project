@@ -6,7 +6,8 @@ namespace App\Support;
  * Central RBAC catalog.
  *
  * Permission keys are preserved from the legacy React application so that
- * feature flags can be reconciled one-to-one during the migration.
+ * feature flags can be reconciled one-to-one during the migration. The
+ * `catalog.*` keys are Laravel-native additions for the admin catalog screens.
  */
 final class Permissions
 {
@@ -49,6 +50,8 @@ final class Permissions
         'ledgers' => ['label' => 'Ledger & Invoices', 'group' => 'Store'],
         'pos' => ['label' => 'POS Counter & Billing', 'group' => 'Store'],
         'inventory' => ['label' => 'Rice Inventory', 'group' => 'Store'],
+        'catalog.categories' => ['label' => 'Catalog Categories', 'group' => 'Store'],
+        'catalog.products' => ['label' => 'Catalog Products', 'group' => 'Store'],
         'offers' => ['label' => 'Special Offers', 'group' => 'Store'],
         'market_ticker' => ['label' => 'Market Rate Ticker', 'group' => 'Store'],
         'reviews' => ['label' => 'Customer Reviews', 'group' => 'Store'],
@@ -78,6 +81,8 @@ final class Permissions
             'dashboard',
             'pos',
             'inventory',
+            'catalog.categories',
+            'catalog.products',
             'orders',
             'wholesale',
             'ledgers',

@@ -29,7 +29,7 @@ class PermissionTest extends TestCase
         $staff = User::factory()->staff()->create();
         $customer = User::factory()->customer()->create();
 
-        foreach (['dashboard', 'pos', 'inventory', 'orders', 'reports', 'settings', 'seo', 'invoices'] as $permission) {
+        foreach (['dashboard', 'pos', 'inventory', 'catalog.categories', 'catalog.products', 'orders', 'reports', 'settings', 'seo', 'invoices'] as $permission) {
             $this->assertTrue($admin->hasPermission($permission), "Admin should have {$permission}");
         }
 
@@ -41,7 +41,7 @@ class PermissionTest extends TestCase
             $this->assertTrue($staff->hasPermission($permission), "Staff should have {$permission}");
         }
 
-        foreach (['dashboard', 'reports', 'users', 'inventory'] as $permission) {
+        foreach (['dashboard', 'reports', 'users', 'inventory', 'catalog.categories', 'catalog.products'] as $permission) {
             $this->assertFalse($staff->hasPermission($permission), "Staff should not have {$permission}");
         }
 
@@ -49,7 +49,7 @@ class PermissionTest extends TestCase
             $this->assertTrue($customer->hasPermission($permission), "Customer should have {$permission}");
         }
 
-        foreach (['pos', 'orders', 'reports', 'users'] as $permission) {
+        foreach (['pos', 'orders', 'reports', 'users', 'catalog.categories', 'catalog.products'] as $permission) {
             $this->assertFalse($customer->hasPermission($permission), "Customer should not have {$permission}");
         }
     }
@@ -120,5 +120,34 @@ class PermissionTest extends TestCase
 
         $this->assertFalse($superadmin->hasPermission('does_not_exist'));
         $this->assertFalse(Gate::forUser($superadmin)->allows('does_not_exist'));
+    }
+
+    public function test_catalog_category_and_product_permissions_are_registered_as_gates(): void
+    {
+        foreach (['catalog.categories', 'catalog.products'] as $permission) {
+            $this->assertTrue(Permissions::isValid($permission), "Missing permission key: {$permission}");
+            $this->assertSame('Store', Permissions::catalog()[$permission]['group']);
+            $this->assertTrue(Gate::has($permission), "Gate not registered: {$permission}");
+        }
+
+        $admin = User::factory()->admin()->create();
+
+        $this->assertTrue(Gate::forUser($admin)->allows('catalog.categories'));
+        $this->assertTrue(Gate::forUser($admin)->allows('catalog.products'));
+    }
+
+    public function test_catalog_permissions_are_independent_of_inventory(): void
+    {
+        $staff = User::factory()->staff()->create();
+
+        $staff->permissionOverrides()->create([
+            'permission' => 'catalog.categories',
+            'granted' => true,
+        ]);
+
+        $this->assertTrue($staff->hasPermission('catalog.categories'));
+        $this->assertTrue(Gate::forUser($staff)->allows('catalog.categories'));
+        $this->assertFalse($staff->hasPermission('catalog.products'));
+        $this->assertFalse($staff->hasPermission('inventory'));
     }
 }
