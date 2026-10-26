@@ -25,7 +25,7 @@ the values confirmed on the actual host.
 
 | Item | Verified value | Where verified |
 | --- | --- | --- |
-| PHP requirement | `^8.3`; tested on PHP 8.4.27 | `composer.json`, `php -v` |
+| PHP requirement | `>=8.4.1` (enforced by `composer.lock`); tested on PHP 8.4.27 | `composer.json`, `composer.lock`, `php -v` |
 | Framework | Laravel 13.38.0 | `composer.lock` |
 | Livewire | 4.4.8 | `composer.lock` |
 | PDF engine | mPDF 8.3.1 | `composer.lock` |
@@ -50,11 +50,19 @@ the values confirmed on the actual host.
 
 | Requirement | Value | Status |
 | --- | --- | --- |
-| PHP version | 8.4 recommended; 8.3 minimum | Verified locally on 8.4.27; host support **unknown** |
+| PHP version | **8.4.1 minimum**; 8.4 recommended | Verified locally on 8.4.27; host support **unknown** |
 | PHP 8.5 | Not tested | **Unknown** |
 | Memory limit | 256 MB recommended (mPDF peak was ~18 MB for a one-page invoice) | Host limit **unknown** |
 | Max execution time | 60 seconds or more for PDF generation | Host limit **unknown** |
 | OPcache | Recommended | Host support **unknown** |
+
+> **PHP 8.3 cannot run the current dependency lock.** `composer.json` requires
+> `>=8.4.1`, and 16 locked Symfony 8.1 packages (`console`,
+> `http-foundation`, `http-kernel`, `routing`, `mailer`, `string`, …) require
+> `>=8.4.1` themselves, so `artisan` fatals on PHP 8.2/8.3 with "Composer
+> detected issues in your platform". Do not lower the constraint without
+> downgrading those packages first. `composer why-not php 8.3.0` lists the
+> exact blockers.
 
 Required extensions (from the installed packages and a production run):
 
@@ -285,7 +293,7 @@ cPanel → Cron Jobs:
 * * * * * /usr/local/bin/php /home/<CPANEL_USER>/chal-bazar-pro/artisan schedule:run >> /dev/null 2>&1
 ```
 
-Replace `/usr/local/bin/php` with the verified PHP 8.3/8.4 CLI path
+Replace `/usr/local/bin/php` with the verified PHP 8.4.1+ CLI path
 (`which php`, `php -v`, or the cPanel PHP Selector path such as
 `/opt/cpanel/ea-php84/root/usr/bin/php`). The exact path is **unknown** until
 the host is inspected.
@@ -519,7 +527,7 @@ staging log. Never send cPanel passwords, SSH private keys or production
 | --- | --- | --- |
 | 1 | cPanel username and absolute home path (normally `/home/<user>`) | Every path below depends on it |
 | 2 | Staging subdomain name and whether a document root outside `public_html` is allowed | Determines the layout in §2.4 |
-| 3 | PHP version selector availability and supported versions (8.3/8.4) | Laravel 13 requires PHP `^8.3` |
+| 3 | PHP version selector availability and supported versions (8.4.1+) | Locked dependencies require PHP `>=8.4.1` |
 | 4 | Absolute PHP **CLI** binary path and output of `php -v` | Required for Composer, Artisan and cron |
 | 5 | Output of `php -m` on the selected PHP version | Confirms the extension list in §2.1 |
 | 6 | MySQL or MariaDB version and host/port exposed to the account | Compatibility and `.env` values |
@@ -546,7 +554,7 @@ covered, not just PHP:
 
 | Item | Verified locally | Unknown until host inspection |
 | --- | --- | --- |
-| PHP 8.3/8.4 and extensions | Yes (8.4.27) | Host version, extensions, INI limits |
+| PHP 8.4.1+ and extensions | Yes (8.4.27) | Host version, extensions, INI limits |
 | MySQL 8.4 | Yes (test DB) | Host MySQL/MariaDB version, SQL mode |
 | MySQL session timezone | `+06:00` (test server) | Whether `SET time_zone` is permitted |
 | SSH/Terminal + Composer | Local Composer 2 | Host access and path |
@@ -577,7 +585,7 @@ Do not mark PASS from assumption. Do not paste passwords, private keys or
 | --- | --- | --- | --- | --- |
 | 1 | cPanel user and home path | | NOT VERIFIED | |
 | 2 | Subdomain document root or symlink (web-server follow + ownership) | | NOT VERIFIED | |
-| 3 | PHP 8.3/8.4 selectable per subdomain | | NOT VERIFIED | |
+| 3 | PHP 8.4.1+ selectable per subdomain | | NOT VERIFIED | |
 | 4 | PHP CLI path and Composer on the same PHP | | NOT VERIFIED | |
 | 5 | Required PHP extensions | | NOT VERIFIED | |
 | 6 | MySQL/MariaDB version, host, port, SQL modes | | NOT VERIFIED | |

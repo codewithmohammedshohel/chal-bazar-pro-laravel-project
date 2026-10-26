@@ -6,7 +6,8 @@ not modified by this project.
 
 ## Stack
 
-- PHP 8.3+ (verified locally on PHP 8.4)
+- PHP 8.4.1+ (required by the locked Symfony 8.1 packages; verified locally on
+  PHP 8.4.27)
 - Laravel 13
 - Livewire 4 with custom Blade authentication
 - Tailwind CSS 4 + Vite
