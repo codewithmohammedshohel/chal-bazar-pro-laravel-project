@@ -132,6 +132,10 @@ content; no new invoice record is created (covered by tests).
 
 - shop name/brand plus optional phone and address from configuration,
 - invoice number, issue date (Bengali digits) and order code,
+
+The issue date is formatted from `invoices.issued_at` in the application
+timezone, which is fixed to `Asia/Dhaka`. The printed date is therefore the
+Dhaka calendar date, not UTC and not the hosting server's local time.
 - customer name, e-mail and delivery address (the document is private),
 - line items from the stored `order_items` snapshots
   (`product_title`, `variant_label`, weight, quantity, `unit_price`,

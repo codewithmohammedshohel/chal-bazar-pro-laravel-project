@@ -59,6 +59,9 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Keep the MySQL session offset aligned with the Asia/Dhaka
+            // application timezone so TIMESTAMP columns round-trip correctly.
+            'timezone' => env('DB_TIMEZONE', '+06:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],
@@ -79,6 +82,9 @@ return [
             'prefix_indexes' => true,
             'strict' => true,
             'engine' => null,
+            // Keep the MariaDB session offset aligned with the Asia/Dhaka
+            // application timezone so TIMESTAMP columns round-trip correctly.
+            'timezone' => env('DB_TIMEZONE', '+06:00'),
             'options' => extension_loaded('pdo_mysql') ? array_filter([
                 Mysql::ATTR_SSL_CA => env('MYSQL_ATTR_SSL_CA'),
             ]) : [],

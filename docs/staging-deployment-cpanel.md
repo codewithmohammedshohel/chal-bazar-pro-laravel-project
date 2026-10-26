@@ -33,6 +33,7 @@ the values confirmed on the actual host.
 | Scheduler | `orders:expire-reservations` every 10 minutes, `withoutOverlapping(10)` | `php artisan schedule:list`, `routes/console.php` |
 | Queue | No queued jobs are dispatched by the current code | repository search |
 | Session / cache / queue | `database` drivers by default | `.env.example` |
+| Application timezone | `Asia/Dhaka` (`config/app.php`); MySQL session set to `+06:00` | `config/app.php`, `config/database.php`, tests |
 | Document root | `public/` only | `public/index.php`, Laravel layout |
 | PDF files | Generated on demand and streamed; nothing written to disk | `InvoiceController`, `MpdfInvoicePdfRenderer` |
 | Private disk | `storage/app/private` (outside the web root) | `config/filesystems.php` |
@@ -40,6 +41,7 @@ the values confirmed on the actual host.
 | Cloudinary | No SDK, config or env integration; only a nullable column | repository search |
 | Build | `npm run build` succeeds | Vite 8.3.5 build |
 | Composer | `composer validate` and `check-platform-reqs` pass | Composer 2 checks |
+| Local PHP limits | `memory_limit=512M`, CLI `max_execution_time=0`, `upload_max_filesize=20M`, `post_max_size=25M` | `php -i` on the local CLI (host values **unknown**) |
 
 ## 2. Hosting requirements
 
@@ -89,6 +91,20 @@ it publicly.
 | Storage engine | InnoDB | Required |
 | Charset / collation | `utf8mb4` / `utf8mb4_unicode_ci` (Laravel default) | Verify on host |
 | SQL mode | Default MySQL 8 modes are fine | Unknown host override |
+| Session timezone | `+06:00` via `DB_TIMEZONE` | Sent by the app on every connection; **verify** it is applied |
+
+Laravel sets the session timezone with `SET time_zone='+06:00'` when the
+`mysql`/`mariadb` connection has a `timezone` key. Do **not** rely on the
+server's global timezone: it may be UTC, the hosting country's zone, or
+empty. After deployment, verify the session value from the host:
+
+```bash
+php artisan tinker --execute="echo DB::selectOne('SELECT @@session.time_zone AS tz')->tz;"
+```
+
+Expected output: `+06:00`. If the host blocks `SET time_zone` (rare), keep
+`DB_TIMEZONE=+06:00` and record the failure; do not switch the application
+timezone back to UTC as a workaround.
 
 Create a dedicated database and user in cPanel. Recommended privileges:
 
@@ -150,7 +166,14 @@ URL. It does not by itself force HTTPS.
 
 ```dotenv
 SESSION_SECURE_COOKIE=true
+SESSION_DOMAIN=<staging-domain>
+SESSION_SAME_SITE=lax
 ```
+
+- `SESSION_DRIVER=database` requires the `sessions` table, which is created by
+  the default migrations. If the host cannot support database sessions/cache
+  reliably, fix the database configuration; do not silently fall back to
+  `file`/`array` for a multi-process PHP-FPM deployment.
 
 - Do not enable HSTS until the staging hostname is final and HTTPS is proven.
 - If TLS terminates at a proxy, configure trusted proxies at the web-server
@@ -195,6 +218,21 @@ time and must not be backed up as business data.
 - If invoice files are ever persisted in a later milestone, keep them under
   `storage/app/private` and serve them through an authorized controller or a
   short-lived signed URL. Never put them under `public/` or `public/storage`.
+
+Licence and attribution verified locally:
+
+- `composer.lock` / `vendor/mpdf/mpdf/composer.json`: `mpdf/mpdf` **v8.3.1**
+  declaring `GPL-2.0-only`.
+- `vendor/mpdf/mpdf/LICENSE.txt` contains GNU GPL version 2; the upstream mPDF
+  manual describes "version 2 or any later version". The ambiguity is recorded
+  in `THIRD-PARTY-NOTICES.md`; do not silently pick one interpretation.
+- Hind Siliguri is SIL OFL 1.1. Keep `resources/fonts/hind-siliguri/OFL.txt`
+  and the copyright notice in the deployed release.
+- **Private hosting of this business application is use, not distribution**,
+  so it does not require a redistribution/resale licence decision. A future
+  resale or redistribution of the application together with mPDF does. Do not
+  replace the PDF engine automatically; it is isolated behind
+  `App\Contracts\InvoicePdfRenderer`.
 
 ### 2.8 Cron for reservation expiry
 
@@ -323,6 +361,7 @@ DB_PORT=3306
 DB_DATABASE=<db>
 DB_USERNAME=<user>
 DB_PASSWORD=<password>
+DB_TIMEZONE=+06:00
 
 SESSION_DRIVER=database
 SESSION_SECURE_COOKIE=true
@@ -373,6 +412,13 @@ is retained for future use). If a queued job is added later, add a supervised
 `php artisan queue:work` process; cPanel shared hosting may not support a
 long-running worker.
 
+`SESSION_DRIVER=database`, `CACHE_STORE=database` and
+`QUEUE_CONNECTION=database` require the `sessions`, `cache`, `cache_locks`,
+`jobs`, `job_batches` and `failed_jobs` tables. They are created by the
+migrations; confirm them with `php artisan migrate:status` and a read/write
+login test. The scheduler's `withoutOverlapping()` lock uses the same cache
+store, so a broken cache store also breaks reservation expiry.
+
 ### 2.13 First owner account
 
 Create the owner from the CLI, not from a web route:
@@ -386,12 +432,36 @@ Use a unique strong password. Do not reuse the local password. The command
 refuses to run in production without `--allow-production` and never prints the
 password.
 
-### 2.14 Known application limitations relevant to the host
+### 2.14 Application timezone and stored timestamps
 
-- The application timezone is hardcoded to `UTC` in `config/app.php`. Invoice
-  and order timestamps display in UTC. Decide before launch whether the shop
-  needs `Asia/Dhaka`; changing it affects date display and is a code change,
-  not a cPanel setting.
+The approved application timezone is `Asia/Dhaka` and is fixed in
+`config/app.php`. It is deliberately not an `.env` value: staging and
+production must use the same wall clock.
+
+- `now()`, `Carbon`, Blade date rendering and `App\Support\Bangla::date()`
+  report Dhaka time. Bangladesh has no daylight saving, so the UTC offset is
+  always `+06:00`.
+- **UTC storage convention:** MySQL `TIMESTAMP` columns store instants in UTC
+  internally. The connection sets `time_zone='+06:00'` (`DB_TIMEZONE`) so
+  TIMESTAMP values round-trip correctly and comparisons with `now()` stay
+  consistent. The stored instant is not rewritten; only the session
+  presentation changes.
+- The host's server timezone does not need to be Dhaka. It is **unknown** and
+  irrelevant once `DB_TIMEZONE=+06:00` is applied. Verify the session value as
+  shown in §2.2.
+- Do not rewrite historical rows, run `UPDATE ... SET created_at = ...`, or
+  change column types to "fix" timezones. Existing rows written under a
+  previous UTC-configured application remain valid instants and will render in
+  Dhaka time after this change.
+- `php artisan test --filter=ApplicationTimezoneTest` covers the config value,
+  a frozen UTC instant converted to Dhaka, the Bangla date helper, and the
+  MySQL session timezone (skipped on SQLite).
+- Date-only business data (for example the date printed on an invoice) is
+  derived from the timestamp at render time. No separate date column is
+  stored, so there is no second date field to migrate.
+
+### 2.15 Known application limitations relevant to the host
+
 - `APP_LOCALE` defaults to `en`; the storefront text is Bangla, but framework
   validation messages may be English unless translated.
 - Email verification is not enabled; password reset requires SMTP.
@@ -403,10 +473,38 @@ password.
 
 ## 3. Verified vs unknown on the host
 
+### 3.1 Exact information to request from the hosting provider
+
+Collect all of the following before uploading anything. Record answers in the
+staging log. Never send cPanel passwords, SSH private keys or production
+`.env` contents through chat, email or this repository.
+
+| # | Item to confirm | Why it matters |
+| --- | --- | --- |
+| 1 | cPanel username and absolute home path (normally `/home/<user>`) | Every path below depends on it |
+| 2 | Staging subdomain name and whether a document root outside `public_html` is allowed | Determines the layout in §2.4 |
+| 3 | PHP version selector availability and supported versions (8.3/8.4) | Laravel 13 requires PHP `^8.3` |
+| 4 | Absolute PHP **CLI** binary path and output of `php -v` | Required for Composer, Artisan and cron |
+| 5 | Output of `php -m` on the selected PHP version | Confirms the extension list in §2.1 |
+| 6 | MySQL or MariaDB version and host/port exposed to the account | Compatibility and `.env` values |
+| 7 | Database/user quota and allowed privileges | One DB and one user per environment |
+| 8 | SSH or Terminal access; Composer 2 and Git availability/paths | Deployment method |
+| 9 | Disk quota, inode limit, `memory_limit`, `max_execution_time`, `upload_max_filesize`, `post_max_size` | PDF generation and uploads |
+| 10 | Cron availability, minimum interval and any per-account limits | One entry per minute is required |
+| 11 | AutoSSL/Let's Encrypt support and Force HTTPS option | Secure cookies and redirects |
+| 12 | SMTP host, ports (587/465), authentication and sending limits | Password reset and notifications |
+| 13 | SPF/DKIM/DMARC controls in cPanel | Deliverability |
+| 14 | Backup policy, retention and self-service dump/restore | Rollback plan |
+| 15 | Outbound firewall policy (SMTP ports, HTTPS) | Mail delivery |
+| 16 | Node.js availability (optional) | Only needed to build assets on the host |
+
+### 3.2 Verified vs unknown summary
+
 | Item | Verified locally | Unknown until host inspection |
 | --- | --- | --- |
 | PHP 8.3/8.4 and extensions | Yes (8.4.27) | Host version, extensions, INI limits |
 | MySQL 8.4 | Yes (test DB) | Host MySQL/MariaDB version, SQL mode |
+| MySQL session timezone | `+06:00` (test server) | Whether `SET time_zone` is permitted |
 | SSH/Terminal + Composer | Local Composer 2 | Host access and path |
 | Document-root override | Laravel public layout | Whether cPanel allows `public/` docroot |
 | HTTPS / AutoSSL | Not tested | Certificate and redirect support |
@@ -418,36 +516,83 @@ password.
 
 ## 4. Staging deployment sequence (not executed)
 
+### 4.1 Dedicated database, migrations and restore test
+
+Staging must start from a **dedicated, empty** database owned by a dedicated
+user. Do not point staging at production, copy a production dump, or import
+Firebase/Firestore exports.
+
+1. Create `chal_bazar_staging` and a dedicated user in cPanel. Use a unique
+   password stored only in the staging `.env` and a password manager.
+2. Confirm the database is empty before migrating:
+   `SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = 'chal_bazar_staging';`
+   Expected: `0`.
+3. Run only additive migrations:
+
+   ```bash
+   php artisan migrate --force
+   php artisan migrate:status
+   ```
+
+   All migrations must show `Ran`. Never use `migrate:fresh`,
+   `migrate:refresh`, `db:wipe`, `DROP TABLE` or `TRUNCATE` on a database that
+   holds real orders.
+4. **Prove the backup path before cutover.** Create a second disposable
+   database (for example `chal_bazar_restore_test`), dump staging, restore it,
+   then verify:
+   - `php artisan migrate:status` against the restore database;
+   - row counts for orders, items, status events, stock movements, stock
+     levels, reservations, returns, invoices and invoice sequences;
+   - the stock reconciliation query in `docs/backup-and-rollback.md` returns
+     no rows;
+   - `SELECT @@session.time_zone` returns `+06:00` when the app connects;
+   - a sample order's `created_at` renders as the same Dhaka wall-clock time
+     in staging and in the restore copy.
+5. Drop the restore-test database and record the result in the staging log.
+   The disposable restore test must pass **before any production cutover**.
+
+If a future migration is not additive, stop and plan a forward fix. The
+`down()` methods in this repository drop tables/columns, so they are safe only
+on a disposable staging database and are **not** a production rollback
+mechanism.
+
+### 4.2 Deployment steps
+
 1. **Freeze and tag.** Confirm local `main` is clean and matches `origin/main`.
    Create an annotated Git tag for the release and push it. Record the commit
    hash in the staging log.
 2. **Back up.** Dump the current staging database and archive the current
    staging application directory and `.env` (see
    `docs/backup-and-rollback.md`). If staging is empty, record that fact.
-3. **Create the hosting resources.** Subdomain, document root, database,
-   database user, PHP version/extensions, SSL.
+3. **Create the hosting resources.** Subdomain, document root, dedicated
+   database/user (§4.1), PHP version/extensions, SSL.
 4. **Upload the release.** Prefer `git archive`/rsync of the tagged commit, or a
    Git checkout on the host. Exclude `.env`, `vendor/`, `node_modules/`,
    `public/build/`, `.git/`, tests and local databases.
 5. **Install dependencies.** `composer install --no-dev --optimize-autoloader`
    (or upload a matching `vendor/`), then `composer check-platform-reqs`.
-6. **Configure `.env`.** Copy the production template, generate `APP_KEY`, set
-   the staging URL, DB, SMTP, invoice and WhatsApp values. `chmod 600 .env`.
+6. **Configure `.env`.** Copy the production template in §2.12 (never the local
+   `.env`), generate `APP_KEY`, set the staging URL, DB, `DB_TIMEZONE`,
+   SMTP, invoice and WhatsApp values. `chmod 600 .env`.
 7. **Build assets.** Run `npm ci && npm run build` on the host if Node is
    available; otherwise upload the locally built `public/build/` produced from
    the same commit. Verify `public/build/manifest.json` exists.
-8. **Migrate.** `php artisan migrate --force`. These migrations are additive
-   for a new database; for an existing staging database, review
-   `php artisan migrate:status` first. Never use `fresh`/`refresh`.
-9. **Link public storage (only if public media is used).**
-   `php artisan storage:link`.
-10. **Provision the owner.** `app:provision-owner ... --allow-production`.
-11. **Optimize.** `config:cache`, `route:cache`, `view:cache`.
-12. **Cron.** Add the single `schedule:run` entry, wait for one run and confirm
+8. **Migrate.** `php artisan migrate --force` against the empty staging
+   database. Review `php artisan migrate:status` before and after. Never use
+   `fresh`/`refresh`.
+9. **Verify timezone and storage.** `php artisan tinker --execute="echo DB::selectOne('SELECT @@session.time_zone AS tz')->tz;"`,
+   then check a rendered order and invoice date against Asia/Dhaka.
+10. **Link public storage (only if public media is used).**
+    `php artisan storage:link`.
+11. **Provision the owner.** `app:provision-owner ... --allow-production`.
+12. **Optimize.** `config:cache`, `route:cache`, `view:cache`.
+13. **Cron.** Add the single `schedule:run` entry, wait for one run and confirm
     no errors in `storage/logs/laravel.log`.
-13. **Smoke test.** Follow section 5.
-14. **Record.** Commit hash, tag, DB backup name, `.env` backup location,
-    cron line, and smoke-test results in the staging log.
+14. **Smoke test.** Follow §5.
+15. **Restore test.** Repeat §4.1 step 4 against the populated staging database
+    and keep the evidence.
+16. **Record.** Commit hash, tag, DB backup name, `.env` backup location,
+    cron line, timezone check and smoke-test results in the staging log.
 
 ## 5. Staging smoke tests
 
@@ -475,8 +620,71 @@ password.
 - [ ] Cron has run at least once (check log/cache lock; no error output).
 - [ ] `php artisan migrate:status` shows all migrations `Ran`.
 - [ ] `php artisan about` shows `production`, debug off, correct URL and DB.
+- [ ] Timezone: `SELECT @@session.time_zone` returns `+06:00`; a new order and
+      invoice render the current Dhaka date/time (not UTC, not server-local).
+- [ ] Session cookie is `Secure`, `HttpOnly` and scoped to the staging domain
+      over HTTPS; login survives a page reload.
+- [ ] `/vendor/`, `/storage/app/private/`, `/database/`, `/tests/` and
+      `/config/` are not web-accessible.
+- [ ] A PDF generated from an order created before the timezone change (if any
+      test rows exist) still shows a plausible Dhaka date; no data was rewritten.
+- [ ] `THIRD-PARTY-NOTICES.md` and the mPDF licence text are present in the
+      uploaded release (they are not web-served).
 
-## 6. Do not do during staging
+### 5.1 Acceptance criteria
+
+Staging is accepted only when every box above is checked, the restore test in
+§4.1 passed on the populated staging database, SMTP delivery to a controlled
+mailbox worked, the scheduler ran at least once without errors, and the
+timezone check matches Asia/Dhaka. Record the evidence (command output, log
+excerpts, screenshot of the invoice) in the staging log. Any unchecked box is
+a blocker, not a warning.
+
+## 6. Production cutover gates
+
+Do not begin cutover until all of these are true and recorded:
+
+1. Staging accepted under §5.1 on the exact release commit/tag.
+2. A tested, off-host backup of the production database exists, with a
+   checksum, and a restore into the disposable database succeeded.
+3. Migration list reviewed: every pending migration is additive; no
+   `fresh`/`refresh`/`wipe`/drop/truncate is in the plan.
+4. Production `.env` prepared separately: `APP_ENV=production`,
+   `APP_DEBUG=false`, real HTTPS `APP_URL`, fresh `APP_KEY`,
+   `SESSION_SECURE_COOKIE=true`, `DB_TIMEZONE=+06:00`, dedicated DB/user and
+   working SMTP. Never copy the staging or local `.env`.
+5. Document root confirmed as `public/`; `.env`, source, `vendor/` and private
+   storage are not web-accessible; directory listing is off.
+6. HTTPS forced and verified; secure cookies verified after login.
+7. Cron entry approved and tested with the host's real PHP CLI path; the
+   database cache lock works.
+8. PDF authorization re-checked: another customer and staff without the
+   `invoices` permission are denied.
+9. Rollback decision recorded: previous tag/commit, previous `vendor/` or a
+   rebuild plan, backup name, and who authorizes rollback.
+10. Owner explicitly approves the cutover in writing. DNS changes are out of
+    scope for this milestone.
+
+## 7. Backup, restore and rollback
+
+The full procedure is in `docs/backup-and-rollback.md`. The staging-specific
+points are:
+
+- Before deploying, take a database dump (`--single-transaction`, default
+  `--tz-utc`), archive the application directory, and back up `.env`
+  separately with mode `600`.
+- Verify the dump with `gzip -t` and a SHA-256 checksum, and keep at least one
+  encrypted copy off the cPanel account.
+- The migrations are additive (`up()` adds tables/columns). Their `down()`
+  methods drop tables/columns, so **do not run `migrate:rollback` against live
+  data**. Fix forward, or restore the pre-deployment dump into a new database
+  after owner approval.
+- Code-only rollback means checking out the previous tag, reinstalling
+  production dependencies and clearing caches; the additive schema can stay.
+- The restore test in §4.1 is mandatory before production cutover, and the
+  rollback owner plus the previous release identifier must be recorded.
+
+## 8. Do not do during staging
 
 - Do not change DNS for the production domain.
 - Do not point staging at the production database.

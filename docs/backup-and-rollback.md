@@ -68,6 +68,10 @@ mysqldump \
 
 - `--single-transaction` gives a consistent InnoDB snapshot without locking the
   shop for the whole dump.
+- `mysqldump` writes `SET TIME_ZONE='+00:00'` by default (`--tz-utc` is on),
+  so TIMESTAMP values are dumped as UTC instants and restore correctly
+  regardless of the session timezone. Do not strip that statement. The
+  application reads them back as Asia/Dhaka through `DB_TIMEZONE=+06:00`.
 - The database user needs `SELECT`, `LOCK TABLES`, `SHOW VIEW`, `TRIGGER` and
   (for routines) `SHOW ROUTINE`/`EXECUTE` as applicable.
 - Verify the dump immediately:
@@ -159,6 +163,18 @@ HAVING ABS(l.on_hand_kg - ledger_kg) > 0.00005;
 
 The query must return **no rows**. Also verify a sample order's status history
 and total against the invoice.
+
+Also verify the timezone round-trip against the restore copy:
+
+```bash
+php artisan tinker --execute="echo DB::selectOne('SELECT @@session.time_zone AS tz')->tz;"
+```
+
+Expected: `+06:00`. Compare the restored `orders.created_at` and
+`invoices.issued_at` for one sample row with the source: the Dhaka wall-clock
+value must be identical (the underlying UTC instant is unchanged). If the
+values differ by six hours, the dump was taken without `--tz-utc` or the
+session timezone was not applied — stop and fix the backup procedure.
 
 6. Open the restored site only if it is isolated (separate subdomain, separate
    `.env`, separate DB). Never point the production `.env` at the restore test

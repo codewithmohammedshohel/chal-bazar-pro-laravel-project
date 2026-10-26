@@ -12,6 +12,21 @@ not modified by this project.
 - Tailwind CSS 4 + Vite
 - mPDF 8.3.1 with the bundled Hind Siliguri font for Bangla invoice PDFs
 
+## Timezone and stored timestamps
+
+The application timezone is fixed to `Asia/Dhaka` in `config/app.php`. MySQL
+and MariaDB connections set their session offset to `+06:00` through
+`DB_TIMEZONE` (Bangladesh has no daylight saving). `TIMESTAMP` columns still
+store UTC instants internally — that is MySQL's normal convention — so do not
+rewrite historical rows. The focused check is:
+
+```bash
+php artisan test --filter=ApplicationTimezoneTest
+```
+
+It verifies the configured zone, a frozen UTC instant rendered in Dhaka time,
+the Bangla date helper, and (on MySQL only) `@@session.time_zone = +06:00`.
+
 ## Local setup
 
 ```bash
@@ -129,5 +144,6 @@ is not legal advice.
 - Email verification is not enabled in the current design.
 - OAuth/phone OTP from the Firebase app is not implemented.
 - Payment gateways are not implemented.
-- cPanel staging/production deployment is not part of this milestone; the
-  hosting checklist is prepared in `docs/staging-deployment-cpanel.md`.
+- cPanel staging preflight and documentation are complete, but no staging or
+  production deployment has been executed; see
+  `docs/staging-deployment-cpanel.md`.
