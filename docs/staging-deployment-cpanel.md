@@ -25,7 +25,7 @@ the values confirmed on the actual host.
 
 | Item | Verified value | Where verified |
 | --- | --- | --- |
-| PHP requirement | `>=8.4.1` (enforced by `composer.lock`); tested on PHP 8.4.27 | `composer.json`, `composer.lock`, `php -v` |
+| PHP requirement | `^8.4.1` (locked packages require `>=8.4.1`); tested on PHP 8.4.27 | `composer.json`, `composer.lock`, `php -v` |
 | Framework | Laravel 13.38.0 | `composer.lock` |
 | Livewire | 4.4.8 | `composer.lock` |
 | PDF engine | mPDF 8.3.1 | `composer.lock` |
@@ -57,7 +57,7 @@ the values confirmed on the actual host.
 | OPcache | Recommended | Host support **unknown** |
 
 > **PHP 8.3 cannot run the current dependency lock.** `composer.json` requires
-> `>=8.4.1`, and 16 locked Symfony 8.1 packages (`console`,
+> `^8.4.1`, and 16 locked Symfony 8.1 packages (`console`,
 > `http-foundation`, `http-kernel`, `routing`, `mailer`, `string`, …) require
 > `>=8.4.1` themselves, so `artisan` fatals on PHP 8.2/8.3 with "Composer
 > detected issues in your platform". Do not lower the constraint without
