@@ -16,10 +16,26 @@
                     ইনভয়েস (প্রিন্ট)
                 </a>
                 @if ($order->invoice)
+                    <a href="{{ route('orders.invoice.pdf', $order) }}"
+                       class="rounded-full border border-stone-300 px-4 py-2 text-xs font-semibold text-stone-700 hover:bg-stone-100">
+                        ইনভয়েস PDF
+                    </a>
                     <span class="rounded-full bg-stone-100 px-3 py-2 text-xs font-mono text-stone-600">{{ $order->invoice->invoice_number }}</span>
+                @endif
+                @if (! empty($whatsappUrl))
+                    <a href="{{ $whatsappUrl }}" target="_blank" rel="noopener noreferrer"
+                       class="rounded-full bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700">
+                        WhatsApp-এ কনফার্ম করুন
+                    </a>
                 @endif
             </div>
         </div>
+
+        @if (! empty($whatsappUrl))
+            <p class="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-xs leading-5 text-emerald-900">
+                WhatsApp বাটনটি শুধু একটি বার্তা প্রস্তুত করে WhatsApp অ্যাপ খুলবে। আপনি নিজে যাচাই করে পাঠানোর বোতাম চাপলে বার্তাটি যাবে।
+            </p>
+        @endif
 
         @if (session('status'))
             <p class="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-medium text-emerald-800" role="status">

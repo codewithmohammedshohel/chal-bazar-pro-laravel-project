@@ -59,6 +59,7 @@ Route::middleware(['auth', 'active'])->group(function () {
     Route::get('/orders/{order}', [OrderController::class, 'show'])->name('orders.show');
     Route::post('/orders/{order}/cancel', [OrderController::class, 'cancel'])->name('orders.cancel');
     Route::get('/orders/{order}/invoice', [InvoiceController::class, 'show'])->name('orders.invoice');
+    Route::get('/orders/{order}/invoice/pdf', [InvoiceController::class, 'pdf'])->name('orders.invoice.pdf');
 
     /*
      * Admin order processing.

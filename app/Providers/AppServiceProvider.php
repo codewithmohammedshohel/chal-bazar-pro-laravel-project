@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Contracts\InvoicePdfRenderer;
 use App\Models\Order;
 use App\Models\User;
 use App\Policies\OrderPolicy;
+use App\Services\Invoices\MpdfInvoicePdfRenderer;
 use App\Support\Permissions;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
@@ -16,7 +18,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        $this->app->bind(InvoicePdfRenderer::class, MpdfInvoicePdfRenderer::class);
     }
 
     /**

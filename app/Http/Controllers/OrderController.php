@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Order;
 use App\Services\OrderService;
+use App\Services\WhatsApp\OrderConfirmationLink;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
@@ -25,13 +26,17 @@ class OrderController extends Controller
         return view('orders.index', compact('orders'));
     }
 
-    public function show(Request $request, Order $order): View
+    public function show(Request $request, Order $order, OrderConfirmationLink $whatsapp): View
     {
         $this->authorize('view', $order);
 
         $order->load(['items', 'statusEvents', 'invoice']);
 
-        return view('orders.show', compact('order'));
+        // Null unless the shop configured a valid international destination
+        // and the signed-in user is the customer who placed the order.
+        $whatsappUrl = $whatsapp->for($order, $request->user());
+
+        return view('orders.show', compact('order', 'whatsappUrl'));
     }
 
     public function cancel(Request $request, Order $order): RedirectResponse

@@ -31,6 +31,7 @@
 </head>
 <body>
     <div class="actions">
+        <a class="btn" href="{{ route('orders.invoice.pdf', $order) }}">PDF ডাউনলোড</a>
         <button class="btn" onclick="window.print()">প্রিন্ট / PDF সেভ করুন</button>
         <a class="btn" href="{{ route('orders.show', $order) }}">অর্ডারে ফিরে যান</a>
     </div>
