@@ -122,15 +122,16 @@
                                     @endif
                                 </div>
                             @endforeach
-                            <textarea name="reason" rows="2" maxlength="500" placeholder="ফেরতের কারণ / যাচাইকরণের নোট (ঐচ্ছিক)"
-                                      class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm"></textarea>
+                            <textarea name="reason" rows="2" maxlength="500" required
+                                      placeholder="ফেরতের কারণ ও যাচাইকরণের নোট (আবশ্যক)"
+                                      class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">{{ old('reason') }}</textarea>
                             <input name="operation_key" required maxlength="80" placeholder="রেফারেন্স (যেমন return-{{ $order->id }}-1)"
                                    value="return-{{ $order->id }}-{{ now()->format('YmdHis') }}-{{ \Illuminate\Support\Str::upper(\Illuminate\Support\Str::random(4)) }}"
                                    class="w-full rounded-xl border border-stone-300 px-3 py-2 text-sm">
                             <button class="w-full rounded-full border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-700 hover:bg-emerald-50">স্টকে ফেরত যোগ করুন</button>
                         </form>
                         <p class="mt-3 text-xs leading-5 text-stone-500">
-                            শুধুমাত্র যাচাইকৃত ও অনুমোদিত ফিজিক্যাল ফেরতের পর ব্যবহার করুন। প্রতি আইটেমে ডিসপ্যাচ করা পরিমাণের বেশি ফেরত নেওয়া যাবে না; একই operation key দুইবার স্টক বাড়াবে না।
+                            শুধুমাত্র যাচাইকৃত ও অনুমোদিত ফিজিক্যাল ফেরতের পর ব্যবহার করুন। ডিসপ্যাচ হওয়ার পর দোকান অর্ডার বাতিল করলেও ফেরত রেকর্ড করা যায়; কখনও ডিসপ্যাচ না হওয়া বাতিল অর্ডারে ফেরত দেওয়া যায় না। প্রতি আইটেমে ডিসপ্যাচ করা পরিমাণের বেশি ফেরত নেওয়া যাবে না; একই operation key দুইবার স্টক বাড়াবে না।
                         </p>
                     @else
                         <p class="mt-3 text-xs leading-5 text-stone-500">ফেরত রেকর্ড করতে অর্ডারটি ডিসপ্যাচ করা থাকতে হবে এবং আপনার inventory অনুমতি থাকতে হবে।</p>

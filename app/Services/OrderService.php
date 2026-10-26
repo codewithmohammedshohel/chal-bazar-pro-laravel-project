@@ -278,6 +278,11 @@ class OrderService
      * order-item rows are locked, so different operation keys cannot race
      * past the limit, while the batch operation key makes retries idempotent.
      *
+     * A return is accepted for any order whose goods actually left the shop,
+     * including an order the shop later cancelled while it was in transit.
+     * Cancelled orders that were never dispatched are rejected, because no
+     * physical stock ever left the shop for them.
+     *
      * @param  array<int, array{order_item_id:int|string, quantity_kg:int|float|string}>  $lines
      */
     public function recordReturn(
@@ -285,13 +290,28 @@ class OrderService
         User $actor,
         array $lines,
         string $operationKey,
-        ?string $reason = null,
+        string $reason,
     ): OrderReturnBatch {
         $operationKey = trim($operationKey);
+        $reason = trim($reason);
 
         if ($operationKey === '' || mb_strlen($operationKey) > 80) {
             throw ValidationException::withMessages([
                 'operation_key' => 'ফেরতের রেফারেন্স ১ থেকে ৮০ অক্ষরের হতে হবে।',
+            ]);
+        }
+
+        // The reason is part of the return audit record and is mandatory: a
+        // restock may only happen against a documented, verified return.
+        if ($reason === '') {
+            throw ValidationException::withMessages([
+                'reason' => 'ফেরতের কারণ আবশ্যক।',
+            ]);
+        }
+
+        if (mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages([
+                'reason' => 'ফেরতের কারণ ৫০০ অক্ষরের বেশি হতে পারবে না।',
             ]);
         }
 
@@ -323,8 +343,7 @@ class OrderService
                 return $existing->load('returns');
             }
 
-            if (! in_array($lockedOrder->status, [Order::STATUS_IN_TRANSIT, Order::STATUS_DELIVERED], true)
-                || $lockedOrder->dispatched_at === null) {
+            if (! $lockedOrder->isDispatched()) {
                 throw ValidationException::withMessages([
                     'order' => 'শুধুমাত্র ডিসপ্যাচ করা অর্ডারের যাচাইকৃত ফেরত গ্রহণ করা যাবে।',
                 ]);

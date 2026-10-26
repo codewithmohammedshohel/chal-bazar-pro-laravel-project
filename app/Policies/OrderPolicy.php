@@ -53,7 +53,11 @@ class OrderPolicy
 
     public function recordReturn(User $user, Order $order): bool
     {
+        // A physical return is only possible after the goods left the shop.
+        // A shop cancellation does not bring dispatched goods back, so a
+        // cancelled order that was already dispatched stays eligible; a
+        // cancelled order that was never dispatched does not.
         return $user->hasPermission('inventory')
-            && in_array($order->status, [Order::STATUS_IN_TRANSIT, Order::STATUS_DELIVERED], true);
+            && $order->isDispatched();
     }
 }

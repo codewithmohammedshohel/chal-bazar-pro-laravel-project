@@ -10,6 +10,7 @@ not modified by this project.
 - Laravel 13
 - Livewire 4 with custom Blade authentication
 - Tailwind CSS 4 + Vite
+- mPDF 8.3.1 with the bundled Hind Siliguri font for Bangla invoice PDFs
 
 ## Local setup
 
@@ -62,6 +63,14 @@ The command:
 After the owner signs in, further role/permission changes must be performed by
 authorised administration code (not implemented in this milestone).
 
+## Deployment and recovery
+
+The cPanel staging checklist (hosting requirements, document root, cron, SMTP,
+HTTPS, PHP extensions and verified/unknown items) is in
+`docs/staging-deployment-cpanel.md`. Backup, restore-test and rollback
+procedures are in `docs/backup-and-rollback.md`. No deployment has been
+executed from this repository yet.
+
 ## Testing
 
 ```bash
@@ -82,13 +91,17 @@ DB_CONNECTION=mysql DB_DATABASE=chal_bazar_mysql_test \
 
 See `docs/inventory-integrity.md` for stock accounting, cumulative return
 limits, reservation expiry, the scheduler command and the real multi-process
-MySQL concurrency tests.
+MySQL concurrency tests. See `docs/invoice-pdf-and-whatsapp.md` for the Bangla
+PDF invoice, its authorization rules, and the WhatsApp click-to-chat link.
 
 ## Inventory integrity
 
 - Returns are linked to real order items, capped against the historical
   dispatched weight, recorded in `order_return_batches` / `order_returns`, and
   restocked exactly once.
+- A return is accepted only for an order whose goods were actually dispatched,
+  including a dispatched order the shop later cancelled. Cancelled orders that
+  were never dispatched cannot be returned, and a return reason is mandatory.
 - Pending reservations expire after `ORDER_RESERVATION_TTL_HOURS` (default 24)
   through `php artisan orders:expire-reservations` and the scheduler.
 - All stock arithmetic uses integer 1/10,000 kg units.
@@ -99,10 +112,22 @@ The following are intentionally excluded from Git: `.env`, SQLite databases,
 `vendor/`, `node_modules/`, `public/build/`, generated Livewire assets,
 logs and caches.
 
+## Licensing
+
+The application source is **not** open-source licensed: `composer.json`
+declares `"license": "proprietary"` and no `LICENSE` file grants redistribution
+rights. The repository uses third-party components with their own terms —
+notably mPDF (GPL-2.0-family; the installed metadata says `GPL-2.0-only`, the
+upstream manual says GPL v2 or later) and the Hind Siliguri font (SIL OFL 1.1).
+Do not describe a combined distribution as closed-source without resolving
+mPDF's terms. See `THIRD-PARTY-NOTICES.md` for the inventory and options. This
+is not legal advice.
+
 ## Known limitations (this milestone)
 
 - SMTP is not configured, so password-reset emails are only verified with fakes.
 - Email verification is not enabled in the current design.
 - OAuth/phone OTP from the Firebase app is not implemented.
-- PDF invoice generation, WhatsApp notifications, payment gateways and cPanel
-  deployment are deferred to later milestones.
+- Payment gateways are not implemented.
+- cPanel staging/production deployment is not part of this milestone; the
+  hosting checklist is prepared in `docs/staging-deployment-cpanel.md`.

@@ -64,11 +64,13 @@ catalogue weight later cannot increase the returnable quantity.
 
 A return is accepted only when:
 
-- the order belongs to the actor's shop scope and is `in_transit` or
-  `delivered`;
-- `dispatched_at` is set;
+- `dispatched_at` is set, including an order the shop cancelled after
+  dispatch (the goods still physically left the shop);
+- the order is **not** a cancelled order that was never dispatched;
 - the order item belongs to that order;
-- the line has a positive quantity with at most four decimal places.
+- the line has a positive quantity with at most four decimal places;
+- a non-blank reason of at most 500 characters is supplied and stored on the
+  return batch.
 
 The service locks the order row, the affected order-item rows (ascending id),
 the previous return rows, and stock rows (ascending variant id). All inserts
@@ -82,9 +84,9 @@ in the same transaction that increases physical stock.
 ### Admin flow
 
 `/admin/orders/{order}` shows, per item, dispatched / already returned /
-remaining kilograms. Submit one or more item quantities with a reason and an
-operation key. Reusing the same operation key returns the original batch and
-does not restock again.
+remaining kilograms. Submit one or more item quantities with a mandatory
+reason and an operation key. Reusing the same operation key returns the
+original batch and does not restock again.
 
 ## Reservation expiry
 

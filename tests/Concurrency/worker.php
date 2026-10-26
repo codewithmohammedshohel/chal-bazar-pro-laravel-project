@@ -64,7 +64,7 @@ try {
                 $actor,
                 $payload['lines'],
                 (string) $payload['operation_key'],
-                $payload['reason'] ?? null,
+                (string) ($payload['reason'] ?? ''),
             );
 
             return [

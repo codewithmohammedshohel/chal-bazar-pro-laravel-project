@@ -29,16 +29,30 @@ without touching the controller, routes, views or the invoice-numbering code.
 
 ### Licence obligation (read before redistribution)
 
-mPDF is **GPL-2.0-only**. The application source in this repository stays
-MIT-licensed, but an application distributed *together with* mPDF forms a
-combined distribution that must comply with GPL-2.0. Before shipping this as a
-closed-source product the owner must choose one of:
+The installed package metadata (`vendor/mpdf/mpdf/composer.json`) declares
+`GPL-2.0-only`, and the bundled `LICENSE.txt` is the GNU GPL version 2 text.
+The upstream README says "GNU GPL v2 licence", while the official manual's
+License page (<https://mpdf.github.io/about-mpdf/license.html>) says "either
+version 2 of the License, or (at your option) any later version". The metadata
+is inconsistent, so treat mPDF as GPL-2.0-family software and do not assume a
+permissive licence.
 
-1. accept GPL-2.0 for the combined distribution,
-2. obtain a commercial mPDF licence from the mPDF maintainer, or
-3. drop in a permissively licensed engine that can shape Bengali (e.g. a
-   Pango/HarfBuzz-based renderer such as WeasyPrint or headless Chromium) —
-   both need binaries that are not guaranteed on cheap cPanel plans.
+Running the shop on your own hosting is use, not distribution. Distributing the
+application together with mPDF (source, package, container image or client
+handover) creates a combined distribution. The owner must choose one of:
+
+1. comply with GPL-2.0 for the combined distribution (ship the complete
+   corresponding source and the licence notices),
+2. obtain another or commercial mPDF licence from the maintainer, or
+3. replace mPDF with a permissively licensed engine that can shape Bengali
+   (e.g. a Pango/HarfBuzz-based renderer such as WeasyPrint or headless
+   Chromium) — both need binaries that are not guaranteed on cheap cPanel
+   plans.
+
+This is a factual inventory, not legal advice. The application source in this
+repository is declared `proprietary` in `composer.json` and is not MIT-licensed;
+see `THIRD-PARTY-NOTICES.md` for the full notices. That repository declaration
+does not override mPDF's GPL terms for a combined distribution.
 
 The PDF feature can also be switched off entirely (`INVOICE_PDF_ENABLED=false`),
 in which case the printable HTML invoice remains the only invoice format.

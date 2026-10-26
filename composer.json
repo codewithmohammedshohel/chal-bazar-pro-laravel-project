@@ -2,9 +2,9 @@
     "$schema": "https://getcomposer.org/schema.json",
     "name": "laravel/laravel",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
-    "keywords": ["laravel", "framework"],
-    "license": "MIT",
+    "description": "Chal Bazar Pro — Laravel storefront, order and inventory management.",
+    "keywords": ["laravel", "storefront", "inventory", "bangla"],
+    "license": "proprietary",
     "require": {
         "php": "^8.3",
         "laravel/framework": "^13.17",

@@ -251,7 +251,7 @@ class OrderLifecycleTest extends TestCase
 
         $this->orders->recordReturn($order, $this->admin, [
             ['order_item_id' => $item->id, 'quantity_kg' => '1.5'],
-        ], 'return-key-1');
+        ], 'return-key-1', 'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা');
 
         $this->assertSame('49.5000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame('49.5000', $this->level($variant->id)->available_kg);
@@ -259,7 +259,7 @@ class OrderLifecycleTest extends TestCase
         // The same operation key must not restock the same goods twice.
         $this->orders->recordReturn($order, $this->admin, [
             ['order_item_id' => $item->id, 'quantity_kg' => '1.5'],
-        ], 'return-key-1');
+        ], 'return-key-1', 'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা');
 
         $this->assertSame('49.5000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame(1, StockMovement::query()
@@ -270,7 +270,7 @@ class OrderLifecycleTest extends TestCase
         // A distinct, newly verified return may legitimately restock again.
         $this->orders->recordReturn($order, $this->admin, [
             ['order_item_id' => $item->id, 'quantity_kg' => '0.5'],
-        ], 'return-key-2');
+        ], 'return-key-2', 'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা');
 
         $this->assertSame('50.0000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame(2, StockMovement::query()
@@ -288,7 +288,7 @@ class OrderLifecycleTest extends TestCase
         try {
             $this->orders->recordReturn($order, $this->admin, [
                 ['order_item_id' => $item->id, 'quantity_kg' => '1.0'],
-            ], 'early-return');
+            ], 'early-return', 'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা');
             $this->fail('A return before dispatch should have been rejected.');
         } catch (ValidationException) {
             $this->addToAssertionCount(1);
@@ -315,7 +315,7 @@ class OrderLifecycleTest extends TestCase
         try {
             $this->orders->recordReturn($order, $this->admin, [
                 ['order_item_id' => $otherItem->id, 'quantity_kg' => '1.0'],
-            ], 'return-wrong-item');
+            ], 'return-wrong-item', 'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা');
             $this->fail('An order item from another order should have been rejected.');
         } catch (ValidationException) {
             $this->addToAssertionCount(1);

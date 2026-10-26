@@ -145,6 +145,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '2']],
             'full-return-1',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertSame('20.0000', $this->level($variant->id)->on_hand_kg);
@@ -157,6 +158,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '0.0001']],
             'full-return-2',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('20.0000', $this->level($variant->id)->on_hand_kg);
@@ -174,6 +176,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1.2']],
             'partial-1',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertRejected(fn () => $this->orders->recordReturn(
@@ -181,6 +184,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '0.9']],
             'partial-2',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('19.2000', $this->level($variant->id)->on_hand_kg);
@@ -201,6 +205,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1']],
             'duplicate-key',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $second = $this->orders->recordReturn(
@@ -208,6 +213,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1']],
             'duplicate-key',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertSame($first->id, $second->id);
@@ -231,6 +237,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1']],
             'before-dispatch-pending',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'order');
 
         $this->orders->transition($order, Order::STATUS_ACCEPTED, $this->admin);
@@ -240,6 +247,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1']],
             'before-dispatch-accepted',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'order');
 
         $this->assertSame('10.0000', $this->level($variant->id)->on_hand_kg);
@@ -262,6 +270,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $otherItem->id, 'quantity_kg' => '1']],
             'unrelated-item',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('8.0000', $this->level($first->id)->on_hand_kg);
@@ -329,6 +338,7 @@ class ReturnIntegrityTest extends TestCase
                 ['order_item_id' => $byVariant[$sack50->id]->id, 'quantity_kg' => '50'],
             ],
             'sack-over-limit',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('8.0000', $this->level($kg->id)->on_hand_kg);
@@ -343,6 +353,7 @@ class ReturnIntegrityTest extends TestCase
                 ['order_item_id' => $byVariant[$sack50->id]->id, 'quantity_kg' => '50'],
             ],
             'sack-full-return',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertSame(3, $batch->returns()->count());
@@ -364,6 +375,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '2']],
             'snapshot-full',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertRejected(fn () => $this->orders->recordReturn(
@@ -371,6 +383,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '0.0001']],
             'snapshot-over',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('10.0000', $this->level($variant->id)->on_hand_kg);
@@ -398,6 +411,7 @@ class ReturnIntegrityTest extends TestCase
                 ['order_item_id' => $byVariant[$second->id]->id, 'quantity_kg' => '2.5'],
             ],
             'atomic-failure',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         ), 'returns');
 
         $this->assertSame('8.0000', $this->level($first->id)->on_hand_kg);
@@ -416,6 +430,7 @@ class ReturnIntegrityTest extends TestCase
                 ['order_item_id' => $byVariant[$second->id]->id, 'quantity_kg' => '2'],
             ],
             'atomic-success',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertSame(2, $batch->returns()->count());
@@ -435,6 +450,7 @@ class ReturnIntegrityTest extends TestCase
                 $this->admin,
                 [['order_item_id' => $item->id, 'quantity_kg' => $quantity]],
                 'invalid-quantity-'.$index,
+                'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
             ), 'returns');
         }
 
@@ -471,6 +487,7 @@ class ReturnIntegrityTest extends TestCase
             $this->admin,
             [['order_item_id' => $this->item($order)->id, 'quantity_kg' => '1.5']],
             'ledger-return',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $physicalDelta = StockMovement::query()
@@ -488,5 +505,157 @@ class ReturnIntegrityTest extends TestCase
         $this->assertSame(50 * 10000 + $physicalDelta, $this->level($variant->id)->onHandUnits());
         $this->assertSame('47.5000', $this->level($variant->id)->on_hand_kg);
         $this->assertSame('47.5000', $this->level($variant->id)->available_kg);
+    }
+
+    public function test_verified_return_is_allowed_after_a_dispatched_order_is_cancelled_by_the_shop(): void
+    {
+        $variant = $this->makeVariant(onHandKg: 10);
+        $order = $this->dispatch($this->placeOne($variant->id, 2));
+        $item = $this->item($order);
+
+        $this->assertSame('8.0000', $this->level($variant->id)->on_hand_kg);
+
+        $this->orders->cancelByShop($order->fresh(), $this->admin, 'ডেলিভারির সময় গ্রাহক পণ্য নেননি');
+
+        $cancelled = $order->fresh();
+
+        $this->assertSame(Order::STATUS_CANCELLED, $cancelled->status);
+        $this->assertNotNull($cancelled->dispatched_at);
+        $this->assertTrue($cancelled->isDispatched());
+
+        // Cancelling a dispatched order is not the same as physically
+        // receiving the goods back, so stock must not move yet.
+        $this->assertSame('8.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(0, OrderReturnBatch::query()->count());
+
+        $this->assertTrue($this->admin->can('recordReturn', $cancelled));
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.orders.show', $cancelled))
+            ->post(route('admin.orders.return', $cancelled), [
+                'returns' => [$item->id => '1'],
+                'reason' => 'পণ্য ফেরত পাওয়া গেছে',
+                'operation_key' => 'cancelled-dispatch-return',
+            ])
+            ->assertRedirect(route('admin.orders.show', $cancelled))
+            ->assertSessionHasNoErrors();
+
+        $this->assertSame('9.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(1, OrderReturnBatch::query()->where('order_id', $cancelled->id)->count());
+
+        // The cumulative limit still comes from the dispatched snapshot.
+        $this->assertRejected(fn () => $this->orders->recordReturn(
+            $cancelled,
+            $this->admin,
+            [['order_item_id' => $item->id, 'quantity_kg' => '1.0001']],
+            'cancelled-dispatch-over',
+            'অতিরিক্ত ফেরত চেষ্টা',
+        ), 'returns');
+
+        // A retry with the same operation key is idempotent after cancellation.
+        $duplicate = $this->orders->recordReturn(
+            $cancelled,
+            $this->admin,
+            [['order_item_id' => $item->id, 'quantity_kg' => '1']],
+            'cancelled-dispatch-return',
+            'একই অনুরোধ পুনরায়',
+        );
+
+        $this->assertSame('9.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(1, $duplicate->returns()->count());
+        $this->assertSame(1, StockMovement::query()
+            ->where('reference_id', (string) $cancelled->id)
+            ->where('movement_type', StockMovement::TYPE_RETURN)
+            ->count());
+
+        // Recording the return must not rewrite the cancellation history.
+        $events = $cancelled->statusEvents()->orderBy('id')->pluck('to_status')->all();
+        $this->assertSame(Order::STATUS_CANCELLED, end($events));
+        $this->assertSame(1, $cancelled->statusEvents()
+            ->where('to_status', Order::STATUS_CANCELLED)
+            ->count());
+    }
+
+    public function test_return_is_rejected_for_a_cancelled_order_that_was_never_dispatched(): void
+    {
+        $variant = $this->makeVariant(onHandKg: 10);
+        $order = $this->placeOne($variant->id, 2);
+        $item = $this->item($order);
+
+        $this->orders->cancelByShop($order, $this->admin, 'স্টক নেই');
+
+        $cancelled = $order->fresh();
+
+        $this->assertSame(Order::STATUS_CANCELLED, $cancelled->status);
+        $this->assertNull($cancelled->dispatched_at);
+        $this->assertFalse($cancelled->isDispatched());
+        $this->assertSame('10.0000', $this->level($variant->id)->on_hand_kg);
+
+        $this->assertFalse($this->admin->can('recordReturn', $cancelled));
+
+        $this->assertRejected(fn () => $this->orders->recordReturn(
+            $cancelled,
+            $this->admin,
+            [['order_item_id' => $item->id, 'quantity_kg' => '1']],
+            'cancelled-never-dispatched',
+            'ফেরতের চেষ্টা',
+        ), 'order');
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.orders.return', $cancelled), [
+                'returns' => [$item->id => '1'],
+                'reason' => 'ফেরতের চেষ্টা',
+                'operation_key' => 'cancelled-never-dispatched-http',
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('10.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(0, OrderReturnBatch::query()->count());
+        $this->assertSame(0, StockMovement::query()
+            ->where('movement_type', StockMovement::TYPE_RETURN)
+            ->count());
+    }
+
+    public function test_return_reason_is_mandatory_at_service_and_http_levels(): void
+    {
+        $variant = $this->makeVariant(onHandKg: 10);
+        $order = $this->dispatch($this->placeOne($variant->id, 2));
+        $item = $this->item($order);
+
+        foreach (['', '   ', str_repeat('ক', 501)] as $index => $reason) {
+            $this->assertRejected(fn () => $this->orders->recordReturn(
+                $order,
+                $this->admin,
+                [['order_item_id' => $item->id, 'quantity_kg' => '1']],
+                'blank-reason-'.$index,
+                $reason,
+            ), 'reason');
+        }
+
+        $this->assertSame('8.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(0, OrderReturnBatch::query()->count());
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.orders.show', $order))
+            ->post(route('admin.orders.return', $order), [
+                'returns' => [$item->id => '1'],
+                'operation_key' => 'missing-reason-http',
+            ])
+            ->assertRedirect(route('admin.orders.show', $order))
+            ->assertSessionHasErrors('reason');
+
+        $this->assertSame('8.0000', $this->level($variant->id)->on_hand_kg);
+        $this->assertSame(0, OrderReturnBatch::query()->count());
+
+        $batch = $this->orders->recordReturn(
+            $order,
+            $this->admin,
+            [['order_item_id' => $item->id, 'quantity_kg' => '1']],
+            'trimmed-reason',
+            '  যাচাইকৃত ফেরত  ',
+        );
+
+        $this->assertSame('যাচাইকৃত ফেরত', $batch->reason);
+        $this->assertSame('9.0000', $this->level($variant->id)->on_hand_kg);
     }
 }

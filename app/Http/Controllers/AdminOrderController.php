@@ -90,7 +90,7 @@ class AdminOrderController extends Controller
         $validated = $request->validate([
             'returns' => ['required', 'array', 'min:1'],
             'returns.*' => ['nullable', 'decimal:0,4', 'gt:0'],
-            'reason' => ['nullable', 'string', 'max:500'],
+            'reason' => ['required', 'string', 'max:500'],
             'operation_key' => ['required', 'string', 'max:80'],
         ]);
 
@@ -126,7 +126,7 @@ class AdminOrderController extends Controller
             $request->user(),
             $lines,
             $validated['operation_key'],
-            $validated['reason'] ?? null,
+            (string) $validated['reason'],
         );
 
         return back()->with(

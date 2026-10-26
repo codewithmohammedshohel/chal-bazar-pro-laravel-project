@@ -164,6 +164,7 @@ class StockInvariantTest extends TestCase
             $this->admin,
             [['order_item_id' => $item->id, 'quantity_kg' => '1.25']],
             'invariant-return',
+            'যাচাইকৃত ফেরত — রিগ্রেশন পরীক্ষা',
         );
 
         $this->assertSame('98.2500', $this->level($variant->id)->on_hand_kg);
