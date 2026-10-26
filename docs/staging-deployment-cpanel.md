@@ -171,6 +171,28 @@ APP_URL=https://<staging-domain>
 `APP_URL` affects generated links, the Vite manifest URLs and the public disk
 URL. It does not by itself force HTTPS.
 
+#### Document-root decision gate
+
+| Host answer | Decision |
+| --- | --- |
+| A custom document root pointing at `.../chal-bazar-pro/public` is allowed | **GO** — continue with the remaining checks |
+| Only a symlink inside `public_html` is allowed | **VERIFY** — test the symlink as described below before proceeding |
+| Neither a custom document root nor a symlink is allowed | **NO-GO** — use a different hosting plan or provider |
+
+A symlink is only acceptable when **all** of these are true:
+
+1. PHP `symlink()` is enabled, and the account can create the link.
+2. The web server is permitted to follow the link (`FollowSymLinks` or the
+   host's equivalent), not merely PHP-level symlink support.
+3. Ownership and permissions allow the PHP/web-server user to traverse the
+   link target and read `public/`.
+4. After creation, `https://<staging-domain>/` serves the application,
+   `https://<staging-domain>/.env` returns 404/403, and assets load over HTTPS.
+5. The link target is the application's `public/`, never the application root.
+
+If the host cannot confirm points 2 and 3 in writing, treat the layout as
+**NOT VERIFIED** and do not deploy.
+
 ### 2.5 HTTPS
 
 - Enable AutoSSL / Let's Encrypt for the subdomain.
@@ -512,6 +534,14 @@ staging log. Never send cPanel passwords, SSH private keys or production
 | 15 | Outbound firewall policy (SMTP ports, HTTPS) | Mail delivery |
 | 16 | Node.js availability (optional) | Only needed to build assets on the host |
 
+For item 2, add this sentence to the support ticket so the web-server level is
+covered, not just PHP:
+
+> If a symlink-based layout is proposed, please confirm that the web server is
+> permitted to follow a symlink from the staging document root to the Laravel
+> application's `public/` directory outside `public_html`, and advise of any
+> ownership or permission restrictions affecting this setup.
+
 ### 3.2 Verified vs unknown summary
 
 | Item | Verified locally | Unknown until host inspection |
@@ -527,6 +557,48 @@ staging log. Never send cPanel passwords, SSH private keys or production
 | Backup/restore | Procedure prepared | cPanel backup retention and off-site storage |
 | Disk/memory limits | n/a | Host quotas and PHP memory limit |
 | Outbound network | Not needed except SMTP | Firewall policy |
+
+### 3.3 Host answer recording
+
+Once the host replies, copy each answer into this table. Use only **PASS**,
+**BLOCKED** or **NOT VERIFIED**:
+
+- **PASS** — supported by written host confirmation, a command output, or a
+  verified path/value. Quote the evidence in the last column.
+- **BLOCKED** — the host cannot meet the requirement. Record the exact
+  limitation and do not deploy.
+- **NOT VERIFIED** — no answer yet, or the answer is ambiguous. Do not treat
+  it as a pass.
+
+Do not mark PASS from assumption. Do not paste passwords, private keys or
+`.env` contents into this table or the staging log.
+
+| # | Check | Host answer / verified value | Status | Evidence / notes |
+| --- | --- | --- | --- | --- |
+| 1 | cPanel user and home path | | NOT VERIFIED | |
+| 2 | Subdomain document root or symlink (web-server follow + ownership) | | NOT VERIFIED | |
+| 3 | PHP 8.3/8.4 selectable per subdomain | | NOT VERIFIED | |
+| 4 | PHP CLI path and Composer on the same PHP | | NOT VERIFIED | |
+| 5 | Required PHP extensions | | NOT VERIFIED | |
+| 6 | MySQL/MariaDB version, host, port, SQL modes | | NOT VERIFIED | |
+| 7 | DB/user quotas and migration privileges | | NOT VERIFIED | |
+| 8 | SSH/Terminal, Composer 2, Git | | NOT VERIFIED | |
+| 9 | PHP/resource limits and per-subdomain overrides | | NOT VERIFIED | |
+| 10 | Cron support, minimum interval, cron PHP path | | NOT VERIFIED | |
+| 11 | SSL/AutoSSL and HTTPS redirect | | NOT VERIFIED | |
+| 12 | SMTP, sending limits, SPF/DKIM/DMARC | | NOT VERIFIED | |
+| 13 | Backup schedule, retention, off-site/restore | | NOT VERIFIED | |
+| 14 | Outbound SMTP/HTTPS and Composer registries | | NOT VERIFIED | |
+| 15 | `SET time_zone='+06:00'` permitted | | NOT VERIFIED | |
+| 16 | Node.js availability/version | | NOT VERIFIED | |
+| 17 | `proc_open`/`exec`/`shell_exec`/`symlink` disabled? | | NOT VERIFIED | |
+| 18 | `open_basedir` or other filesystem restrictions | | NOT VERIFIED | |
+| 19 | Apache/LiteSpeed, `mod_rewrite`, `AllowOverride` | | NOT VERIFIED | |
+| 20 | PHP-FPM/CGI user and writable `storage/`/`bootstrap/cache/` | | NOT VERIFIED | |
+
+**Gate:** deployment may be approved only when every critical row (1–15 and
+17–20) is PASS. A BLOCKED document-root row (2) is an immediate NO-GO even if
+every other row passes.
 
 ## 4. Staging deployment sequence (not executed)
 
