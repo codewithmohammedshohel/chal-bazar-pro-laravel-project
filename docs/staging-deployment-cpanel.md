@@ -11,7 +11,8 @@ the values confirmed on the actual host.
 ## 0. Non-negotiable hosting rules
 
 - Laravel **must** be served from the `public/` directory. Never point the
-  document root at the application root.
+  document root at the application root, even if the host restricts document
+  roots to `public_html`; use the safe fallbacks in §2.4.
 - `.env`, `app/`, `config/`, `database/`, `routes/`, `storage/`, `tests/`,
   `vendor/` and `.git/` must never be web-accessible.
 - The staging site must use HTTPS, `APP_ENV=production` and `APP_DEBUG=false`.
@@ -142,10 +143,23 @@ Never upload the local `.env`.
 1. Create the staging subdomain in cPanel (for example
    `staging.example.com`).
 2. Set its document root to `/home/<CPANEL_USER>/chal-bazar-pro/public`.
-3. If cPanel refuses a document root outside `public_html`, deploy the
-   application to `/home/<CPANEL_USER>/chal-bazar-pro` and point the subdomain
-   there; do **not** move `index.php`, `.env` or `storage/` into
-   `public_html`.
+3. If cPanel refuses a document root outside `public_html`, **do not point the
+   document root at the application root** — that would expose `.env`, `app/`,
+   `config/`, `vendor/`, logs and database files. Acceptable fallbacks, in
+   order:
+
+   a. Create `public_html/<staging>` as a symlink to
+      `/home/<CPANEL_USER>/chal-bazar-pro/public`, but only if the host permits
+      and follows symlinks. Then verify `https://<staging-domain>/.env`,
+      `/.git/config` and `/composer.json` return 404/403 and that CSS/JS assets
+      load.
+   b. Ask the host to allow a custom document root for the subdomain.
+   c. If neither is possible, choose a different host or plan. Do not move the
+      application root into `public_html`, and never copy `.env`, `app/`,
+      `storage/`, `database/` or `vendor/` into the web root.
+
+   In every case the final document root must resolve to the application's
+   `public/` directory, and `.env` must not be downloadable.
 4. Confirm `https://<staging-domain>/.env` returns 404/403, and that directory
    listing is disabled.
 5. The application URL must be the HTTPS staging URL:
